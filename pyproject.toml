@@ -22,7 +22,12 @@ dev = [
     "pytest-xdist>=2.0",
     "ruff>=0.9",
     "mypy>=1.0",
+]
+
+build = [
     "build>=0.10",
+    "setuptools>=65.0",
+    "wheel>=0.36",
 ]
 
 [tool.setuptools.packages.find]
