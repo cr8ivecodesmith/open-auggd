@@ -24,6 +24,7 @@ def _expand(path: str) -> Path:
 class AgentModels:
     """Per-agent model overrides."""
 
+    auggd: Optional[str] = None
     explorer: Optional[str] = None
     planner: Optional[str] = None
     developer: Optional[str] = None
@@ -109,7 +110,7 @@ def _load_toml(config_file: Path) -> dict:
 
 def _agent_models_from_env(base: AgentModels) -> AgentModels:
     """Apply OAG_<AGENT>_MODEL env vars on top of *base*."""
-    agents = ["explorer", "planner", "developer", "reviewer", "finalizer", "documenter"]
+    agents = ["auggd", "explorer", "planner", "developer", "reviewer", "finalizer", "documenter"]
     updates: dict[str, str] = {}
     for agent in agents:
         env_key = f"OAG_{agent.upper()}_MODEL"
@@ -181,6 +182,7 @@ def load_settings(
     # --- per-agent models from TOML ---
     toml_agent_models = toml.get("models", {}).get("agents", {})
     agent_models = AgentModels(
+        auggd=toml_agent_models.get("auggd"),
         explorer=toml_agent_models.get("explorer"),
         planner=toml_agent_models.get("planner"),
         developer=toml_agent_models.get("developer"),
@@ -232,6 +234,7 @@ def generate_toml(settings: Settings) -> str:
         "",
         "[models.agents]",
         "# Per-agent model overrides. Key is agent name without 'oag-' prefix.",
+        '# auggd = "anthropic/claude-haiku-4-5"',
         '# explorer = "anthropic/claude-haiku-4-5"',
         '# developer = "anthropic/claude-haiku-4-5"',
         "",

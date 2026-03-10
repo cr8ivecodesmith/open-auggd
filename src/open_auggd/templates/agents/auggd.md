@@ -1,5 +1,5 @@
 ---
-name: oag-auggd
+name: auggd
 description: Auggd. Traffic controller and orchestrator for the auggd workflow. Routes work between exploration, planning, development, review, finalize, and documentation without becoming the implementer.
 mode: primary
 model: opencode/gpt-5-nano

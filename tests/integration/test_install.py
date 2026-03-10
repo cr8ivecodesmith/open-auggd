@@ -60,7 +60,7 @@ class TestInstallLifecycle:
         settings = load_settings(project_root=project)
         install(settings)
         expected_agents = [
-            "oag-auggd.md",
+            "auggd.md",
             "oag-explorer.md",
             "oag-planner.md",
             "oag-developer.md",
@@ -133,7 +133,7 @@ class TestInstallLifecycle:
         install(settings)
         uninstall(settings)
         # .opencode managed files should be gone
-        assert not (project / ".opencode" / "agents" / "oag-auggd.md").exists()
+        assert not (project / ".opencode" / "agents" / "auggd.md").exists()
 
     def test_uninstall_removes_auggd_dir(self, project: Path):
         settings = load_settings(project_root=project)
@@ -160,7 +160,7 @@ class TestInstallLifecycle:
         install(settings)
 
         # Corrupt an agent file
-        agent_file = project / ".opencode" / "agents" / "oag-auggd.md"
+        agent_file = project / ".opencode" / "agents" / "auggd.md"
         agent_file.write_text("# CORRUPTED")
 
         reset(settings)
@@ -177,7 +177,11 @@ class TestInstallLifecycle:
         assert ".auggd/" in gitignore.read_text()
 
     def test_install_on_existing_opencode_dir_with_non_oag_files(self, project: Path):
-        """Install should succeed when .opencode/ exists with only user files (no oag-* conflicts)."""
+        """Install should succeed when .opencode/ exists with only user files.
+
+        (no oag-* conflicts).
+
+        """
         settings = load_settings(project_root=project)
         # Create .opencode/ with a user-owned file (not prefixed oag-)
         opencode_dir = project / ".opencode"
@@ -200,7 +204,7 @@ class TestInstallLifecycle:
         opencode_dir = project / ".opencode"
         agents_dir = opencode_dir / "agents"
         agents_dir.mkdir(parents=True)
-        (agents_dir / "oag-auggd.md").write_text("# Old file 1")
+        (agents_dir / "auggd.md").write_text("# Old file 1")
         (agents_dir / "oag-explorer.md").write_text("# Old file 2")
 
         # Install should fail with all conflicts listed
@@ -209,7 +213,7 @@ class TestInstallLifecycle:
 
         error_msg = str(exc_info.value)
         # Both conflicting files should be named in the error
-        assert "oag-auggd.md" in error_msg or ".opencode/agents/oag-auggd.md" in error_msg
+        assert "auggd.md" in error_msg or ".opencode/agents/auggd.md" in error_msg
         assert "oag-explorer.md" in error_msg or ".opencode/agents/oag-explorer.md" in error_msg
         assert "--force" in error_msg
 
@@ -223,7 +227,7 @@ class TestInstallLifecycle:
         opencode_dir = project / ".opencode"
         agents_dir = opencode_dir / "agents"
         agents_dir.mkdir(parents=True)
-        old_file = agents_dir / "oag-auggd.md"
+        old_file = agents_dir / "auggd.md"
         old_file.write_text("# Old content")
 
         # Install with --force should succeed and update the file
@@ -235,6 +239,6 @@ class TestInstallLifecycle:
         manifest_path = project / ".auggd" / "install-manifest.json"
         assert manifest_path.exists()
         manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
-        assert ".opencode/agents/oag-auggd.md" in manifest_data["files"]
+        assert ".opencode/agents/auggd.md" in manifest_data["files"]
         # written list should include all templates
         assert len(written) > 10  # Should include agents, commands, tools, skills
