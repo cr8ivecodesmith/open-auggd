@@ -8,7 +8,13 @@ from pathlib import Path
 import pytest
 
 from open_auggd.config.settings import load_settings
-from open_auggd.install.installer import install, is_installed, reset, uninstall
+from open_auggd.install.installer import (
+    _iter_template_files,
+    install,
+    is_installed,
+    reset,
+    uninstall,
+)
 
 
 class TestInstallLifecycle:
@@ -18,6 +24,22 @@ class TestInstallLifecycle:
     def project(self, tmp_path: Path) -> Path:
         """A bare project directory."""
         return tmp_path
+
+    def test_templates_are_accessible(self):
+        """Verify bundled templates are accessible (not lost in packaging)."""
+        templates = _iter_template_files()
+        assert len(templates) > 0, "No templates found - templates may be missing from wheel build"
+
+        # Verify we have all expected template categories
+        template_dests = [str(dest) for _, dest in templates]
+        assert any("agents" in d for d in template_dests), "No agent templates found"
+        assert any("commands" in d for d in template_dests), "No command templates found"
+        assert any("skills" in d for d in template_dests), "No skill templates found"
+        assert any("tools" in d for d in template_dests), "No tool templates found"
+
+        # Verify each template file actually exists
+        for src, _ in templates:
+            assert src.exists(), f"Template source file missing: {src}"
 
     def test_install_creates_opencode_dirs(self, project: Path):
         settings = load_settings(project_root=project)

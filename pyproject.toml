@@ -29,6 +29,14 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+open_auggd = [
+    "templates/agents/*.md",
+    "templates/commands/*.md",
+    "templates/skills/**/SKILL.md",
+    "templates/tools/*.ts",
+]
+
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
