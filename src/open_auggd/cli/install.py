@@ -21,12 +21,6 @@ def install_cmd(force: bool) -> None:
     """Install auggd into the current project."""
     settings = load_settings()
 
-    if is_installed(settings) and not force:
-        click.echo(
-            "auggd is already installed in this project. Run 'auggd install --force' to reinstall."
-        )
-        sys.exit(1)
-
     try:
         written = install(settings, force=force)
     except FileExistsError as e:
