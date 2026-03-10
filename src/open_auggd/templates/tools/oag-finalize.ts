@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/sdk";
+import { tool } from "@opencode-ai/plugin";
 
 export const iter = tool({
   description: "Finalize iteration N. Requires approved review. Optionally commits.",
