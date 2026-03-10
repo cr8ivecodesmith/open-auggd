@@ -30,7 +30,7 @@ Primary artifact: `<WS>/plan/progress-log.json` (updated by `auggd tools finaliz
 5. Confirm the result via `auggd ws info <N>`. Check that the iteration shows as
    finalized in the progress log.
 
-6. Report the finalization summary to `oag-auggd`: iteration number, finalized status,
+6. Report the finalization summary to `auggd`: iteration number, finalized status,
    commit hash if committed, recommended next action.
 
 ## What NOT to do
