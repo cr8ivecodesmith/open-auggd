@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/sdk";
+import { tool } from "@opencode-ai/plugin";
 
 export const start = tool({
   description: "Start the plan phase. Requires explore phase to be done.",

@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/sdk";
+import { tool } from "@opencode-ai/plugin";
 
 export const check = tool({
   description: "Verify git repo and return current commit hash and document metadata status.",

@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/sdk";
+import { tool } from "@opencode-ai/plugin";
 
 export const start = tool({
   description: "Start development of iteration N. Requires iter-N-plan.json to exist and be ready.",
