@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -84,8 +85,11 @@ class TestInstallLifecycle:
     def test_install_raises_if_already_installed(self, project: Path):
         settings = load_settings(project_root=project)
         install(settings)
-        with pytest.raises(FileExistsError):
+        with pytest.raises(FileExistsError) as exc_info:
             install(settings)
+        # Verify error message is informative
+        assert "already exist" in str(exc_info.value)
+        assert "--force" in str(exc_info.value)
 
     def test_install_force_overwrites(self, project: Path):
         settings = load_settings(project_root=project)
@@ -149,3 +153,66 @@ class TestInstallLifecycle:
         gitignore = project / ".gitignore"
         assert gitignore.exists()
         assert ".auggd/" in gitignore.read_text()
+
+    def test_install_on_existing_opencode_dir_with_non_oag_files(self, project: Path):
+        """Install should succeed when .opencode/ exists with only user files (no oag-* conflicts)."""
+        settings = load_settings(project_root=project)
+        # Create .opencode/ with a user-owned file (not prefixed oag-)
+        opencode_dir = project / ".opencode"
+        opencode_dir.mkdir(parents=True)
+        user_file = opencode_dir / "user-agent.md"
+        user_file.write_text("# User file")
+
+        # Install should succeed
+        install(settings)
+        assert is_installed(settings)
+        # User file should still exist
+        assert user_file.exists()
+        # Manifest should include all installed oag-* files
+        assert (project / ".auggd" / "install-manifest.json").exists()
+
+    def test_install_fails_with_full_conflict_list(self, project: Path):
+        """Pre-existing oag-* files should cause error listing all conflicts."""
+        settings = load_settings(project_root=project)
+        # Create .opencode/ with some pre-existing oag-* files
+        opencode_dir = project / ".opencode"
+        agents_dir = opencode_dir / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "oag-auggd.md").write_text("# Old file 1")
+        (agents_dir / "oag-explorer.md").write_text("# Old file 2")
+
+        # Install should fail with all conflicts listed
+        with pytest.raises(FileExistsError) as exc_info:
+            install(settings)
+
+        error_msg = str(exc_info.value)
+        # Both conflicting files should be named in the error
+        assert "oag-auggd.md" in error_msg or ".opencode/agents/oag-auggd.md" in error_msg
+        assert "oag-explorer.md" in error_msg or ".opencode/agents/oag-explorer.md" in error_msg
+        assert "--force" in error_msg
+
+        # Verify no manifest was written (no partial install)
+        assert not (project / ".auggd" / "install-manifest.json").exists()
+
+    def test_install_force_on_existing_opencode_dir(self, project: Path):
+        """--force should succeed even when oag-* files already exist."""
+        settings = load_settings(project_root=project)
+        # Create .opencode/ with pre-existing oag-* files
+        opencode_dir = project / ".opencode"
+        agents_dir = opencode_dir / "agents"
+        agents_dir.mkdir(parents=True)
+        old_file = agents_dir / "oag-auggd.md"
+        old_file.write_text("# Old content")
+
+        # Install with --force should succeed and update the file
+        written = install(settings, force=True)
+        assert is_installed(settings)
+        # The file should be updated
+        assert old_file.read_text() != "# Old content"
+        # Manifest should include the file
+        manifest_path = project / ".auggd" / "install-manifest.json"
+        assert manifest_path.exists()
+        manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert ".opencode/agents/oag-auggd.md" in manifest_data["files"]
+        # written list should include all templates
+        assert len(written) > 10  # Should include agents, commands, tools, skills

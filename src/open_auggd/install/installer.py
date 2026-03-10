@@ -103,6 +103,20 @@ def install(settings: Settings, force: bool = False) -> list[str]:
     project_root = settings.project_root
     written: list[str] = []
 
+    # --- Pre-flight conflict check ---
+    if not force:
+        conflicts: list[str] = []
+        for _, rel_dest in _iter_template_files():
+            dest = project_root / rel_dest
+            if dest.exists():
+                conflicts.append(str(rel_dest))
+        if conflicts:
+            msg = "The following managed files already exist:\n"
+            for path in sorted(conflicts):
+                msg += f"  {path}\n"
+            msg += "Use 'auggd install --force' to overwrite them."
+            raise FileExistsError(msg)
+
     # --- .auggd/ skeleton ---
     settings.auggd_dir.mkdir(parents=True, exist_ok=True)
     settings.workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -121,8 +135,6 @@ def install(settings: Settings, force: bool = False) -> list[str]:
         dest = project_root / rel_dest
         dest.parent.mkdir(parents=True, exist_ok=True)
         rel_str = str(rel_dest)
-        if dest.exists() and not force:
-            raise FileExistsError(f"{rel_str} already exists. Use --force to overwrite.")
         shutil.copy2(src, dest)
         written.append(rel_str)
 
