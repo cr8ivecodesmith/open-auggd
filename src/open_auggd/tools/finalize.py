@@ -13,7 +13,6 @@ from pathlib import Path
 from open_auggd.tools.base import ToolResult, read_json, require_files, write_json
 from open_auggd.workspace.models import PlanStatus, ProgressLog, ProgressLogEntry, ReviewStatus
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -46,6 +45,7 @@ def _load_progress_log(ws_path: Path) -> tuple[ProgressLog, list[str]]:
 
 
 def _derive_progress_log(ws_path: Path) -> ProgressLog:
+    """Build a ProgressLog by scanning iter-N-plan.json files."""
     plan_dir = ws_path / "plan"
     entries: list[ProgressLogEntry] = []
     if plan_dir.exists():
@@ -54,6 +54,46 @@ def _derive_progress_log(ws_path: Path) -> ProgressLog:
             if data:
                 entries.append(ProgressLogEntry.from_dict(data))
     return ProgressLog(workspace_id=ws_path.name, iterations=entries)
+
+
+def _mark_plan_finalized(ws_path: Path, n: int) -> None:
+    """Set iter-N-plan.json status to finalized if the file exists."""
+    plan_json = _plan_json(ws_path, n)
+    if not plan_json.exists():
+        return
+    pl_data, err = read_json(plan_json)
+    if not err and pl_data is not None:
+        pl_data["status"] = PlanStatus.FINALIZED.value
+        pl_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        write_json(plan_json, pl_data)
+
+
+def _update_progress_log(ws_path: Path, n: int, finalized_at: str) -> list[str]:
+    """Mark iteration *n* as finalized in progress-log.json.
+
+    Returns any warning strings generated while loading the log.
+    """
+    log, warnings = _load_progress_log(ws_path)
+    updated = False
+    for entry in log.iterations:
+        if entry.n == n:
+            entry.plan_status = PlanStatus.FINALIZED.value
+            entry.finalized = True
+            entry.finalized_at = finalized_at
+            updated = True
+            break
+    if not updated:
+        log.iterations.append(
+            ProgressLogEntry(
+                n=n,
+                plan_status=PlanStatus.FINALIZED.value,
+                finalized=True,
+                finalized_at=finalized_at,
+            )
+        )
+    log.updated_at = datetime.now(timezone.utc)
+    write_json(_progress_log_file(ws_path), log.to_dict())
+    return warnings
 
 
 # ---------------------------------------------------------------------------
@@ -98,39 +138,10 @@ def iter_finalize(ws_path: Path, n: int, commit: bool = False) -> ToolResult:
             "Must be 'approved' before finalizing.",
         )
 
-    # Update plan status to finalized
-    plan_json = _plan_json(ws_path, n)
-    if plan_json.exists():
-        pl_data, err = read_json(plan_json)
-        if not err and pl_data is not None:
-            pl_data["status"] = PlanStatus.FINALIZED.value
-            pl_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-            write_json(plan_json, pl_data)
-
-    # Update progress log
     finalized_at = datetime.now(timezone.utc).isoformat()
-    log, warnings = _load_progress_log(ws_path)
-    updated = False
-    for entry in log.iterations:
-        if entry.n == n:
-            entry.plan_status = PlanStatus.FINALIZED.value
-            entry.finalized = True
-            entry.finalized_at = finalized_at
-            updated = True
-            break
-    if not updated:
-        log.iterations.append(
-            ProgressLogEntry(
-                n=n,
-                plan_status=PlanStatus.FINALIZED.value,
-                finalized=True,
-                finalized_at=finalized_at,
-            )
-        )
-    log.updated_at = datetime.now(timezone.utc)
-    write_json(_progress_log_file(ws_path), log.to_dict())
+    _mark_plan_finalized(ws_path, n)
+    warnings = _update_progress_log(ws_path, n, finalized_at)
 
-    # Optional commit
     commit_sha: str | None = None
     if commit:
         commit_result = _git_commit(n, ws_path)
@@ -140,11 +151,7 @@ def iter_finalize(ws_path: Path, n: int, commit: bool = False) -> ToolResult:
             warnings.append(f"Git commit failed: {commit_result.get('error')}")
 
     return ToolResult.success(
-        data={
-            "n": n,
-            "finalized_at": finalized_at,
-            "commit_sha": commit_sha,
-        },
+        data={"n": n, "finalized_at": finalized_at, "commit_sha": commit_sha},
         warnings=warnings,
     )
 

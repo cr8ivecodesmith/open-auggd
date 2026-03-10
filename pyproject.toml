@@ -22,12 +22,8 @@ dev = [
     "pytest-xdist>=2.0",
     "ruff>=0.9",
     "mypy>=1.0",
-]
-
-build = [
-    "build>=0.10",
-    "setuptools>=65.0",
-    "wheel>=0.36",
+    "types-Pygments>=2.0; python_version < '3.12'",
+    "types-pexpect>=4.0; python_version < '3.12'",
 ]
 
 [tool.setuptools.packages.find]
@@ -69,10 +65,22 @@ max-complexity = 10
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "D101",  # Missing docstring in public class
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+    "D104",  # Missing docstring in public package
+]
+
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "uuid_extensions"
+ignore_missing_imports = true
 

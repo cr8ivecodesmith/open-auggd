@@ -7,10 +7,9 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from uuid_extensions import uuid7 as _uuid7_gen
+from uuid_extensions import uuid7 as _uuid7_gen  # type: ignore[import-untyped]
 
 from open_auggd.workspace.slugify import slugify
-
 
 # ---------------------------------------------------------------------------
 # Workspace ID helpers

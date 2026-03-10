@@ -14,7 +14,6 @@ from pathlib import Path
 from open_auggd.tools.base import ToolResult, read_json, require_files, write_json
 from open_auggd.workspace.models import DevStatus, IterReview, ReviewStatus
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -53,7 +52,9 @@ def start(ws_path: Path, n: int) -> ToolResult:
     guard = require_files(
         devlog_json,
         error_code="MISSING_DEVLOG",
-        message_template=f"iter-{n}-devlog.json not found ({{missing}}). Complete development first.",
+        message_template=(
+            f"iter-{n}-devlog.json not found ({{missing}}). Complete development first."
+        ),
     )
     if guard:
         return guard
@@ -110,7 +111,9 @@ def update(ws_path: Path, n: int, patch: dict) -> ToolResult:
     guard = require_files(
         review_json,
         error_code="MISSING_REVIEW",
-        message_template=f"iter-{n}-review.json not found ({{missing}}). Run 'review start {n}' first.",
+        message_template=(
+            f"iter-{n}-review.json not found ({{missing}}). Run 'review start {n}' first."
+        ),
     )
     if guard:
         return guard

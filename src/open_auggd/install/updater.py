@@ -12,7 +12,6 @@ from pathlib import Path
 
 from open_auggd.config.settings import Settings
 
-
 _FRONTMATTER_DELIM = "---"
 _MODEL_RE = re.compile(r"^model:\s*.+$", re.MULTILINE)
 

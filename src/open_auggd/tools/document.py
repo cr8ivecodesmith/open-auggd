@@ -15,7 +15,6 @@ from pathlib import Path
 from open_auggd.tools.base import ToolResult, read_json, write_json
 from open_auggd.workspace.models import DocumentMetadata
 
-
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------

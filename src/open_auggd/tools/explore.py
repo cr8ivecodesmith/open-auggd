@@ -77,7 +77,9 @@ def done(ws_path: Path) -> ToolResult:
     guard = require_files(
         attachments_file,
         error_code="MISSING_ATTACHMENTS",
-        message_template="No explore/attachments.json found ({missing}). Run 'explore start' first.",
+        message_template=(
+            "No explore/attachments.json found ({missing}). Run 'explore start' first."
+        ),
     )
     if guard:
         return guard

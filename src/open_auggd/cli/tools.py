@@ -12,15 +12,15 @@ import sys
 
 import click
 
-from open_auggd.config.settings import load_settings
-from open_auggd.workspace.manager import WorkspaceManager
-import open_auggd.tools.explore as _explore
-import open_auggd.tools.plan as _plan
 import open_auggd.tools.develop as _develop
-import open_auggd.tools.review as _review
-import open_auggd.tools.finalize as _finalize
 import open_auggd.tools.document as _document
+import open_auggd.tools.explore as _explore
+import open_auggd.tools.finalize as _finalize
+import open_auggd.tools.plan as _plan
+import open_auggd.tools.review as _review
+from open_auggd.config.settings import load_settings
 from open_auggd.tools.base import ToolResult
+from open_auggd.workspace.manager import WorkspaceManager
 
 
 def _emit(result: ToolResult) -> None:

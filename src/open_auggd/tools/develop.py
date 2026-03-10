@@ -15,7 +15,6 @@ from pathlib import Path
 from open_auggd.tools.base import ToolResult, read_json, require_files, write_json
 from open_auggd.workspace.models import DevStatus, IterDevlog, PlanStatus
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -110,7 +109,9 @@ def update(ws_path: Path, n: int, patch: dict) -> ToolResult:
     guard = require_files(
         devlog_json,
         error_code="MISSING_DEVLOG",
-        message_template=f"iter-{n}-devlog.json not found ({{missing}}). Run 'develop start {n}' first.",
+        message_template=(
+            f"iter-{n}-devlog.json not found ({{missing}}). Run 'develop start {n}' first."
+        ),
     )
     if guard:
         return guard

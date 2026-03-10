@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import click
 
-from open_auggd.cli.install import install_cmd, uninstall_cmd, update_cmd, reset_cmd
-from open_auggd.cli.workspace import ws_group
+from open_auggd.cli.install import install_cmd, reset_cmd, uninstall_cmd, update_cmd
 from open_auggd.cli.tools import tools_group
+from open_auggd.cli.workspace import ws_group
 
 
 @click.group()
 @click.version_option()
 def cli() -> None:
-    """auggd — agentic development workflow manager for OpenCode."""
+    """Auggd — agentic development workflow manager for OpenCode."""
 
 
 cli.add_command(install_cmd)

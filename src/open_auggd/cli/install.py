@@ -10,7 +10,6 @@ from open_auggd.config.settings import load_settings
 from open_auggd.install.installer import install, is_installed, reset, uninstall
 from open_auggd.install.updater import update_models
 
-
 # ---------------------------------------------------------------------------
 # install
 # ---------------------------------------------------------------------------

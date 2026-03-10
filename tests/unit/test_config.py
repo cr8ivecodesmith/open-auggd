@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import pytest
-
-from open_auggd.config.settings import Settings, generate_toml, load_settings
+from open_auggd.config.settings import generate_toml, load_settings
 
 
 class TestLoadSettings:

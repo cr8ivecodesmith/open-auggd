@@ -31,9 +31,9 @@ class TestWorkspaceManager:
         assert mgr.list_workspaces() == []
 
     def test_list_sorted_by_creation(self, mgr: WorkspaceManager):
-        ws1 = mgr.create("first task")
-        ws2 = mgr.create("second task")
-        ws3 = mgr.create("third task")
+        mgr.create("first task")
+        mgr.create("second task")
+        mgr.create("third task")
         listed = mgr.list_workspaces()
         assert len(listed) == 3
         slugs = [w.slug for w in listed]

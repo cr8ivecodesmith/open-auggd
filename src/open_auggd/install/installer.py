@@ -10,10 +10,8 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from open_auggd.config.settings import Settings, generate_toml
-
 
 # ---------------------------------------------------------------------------
 # Manifest helpers
@@ -119,7 +117,6 @@ def install(settings: Settings, force: bool = False) -> list[str]:
     _ensure_gitignore(project_root)
 
     # --- .opencode/ managed files ---
-    opencode_dir = settings.opencode_dir
     for src, rel_dest in _iter_template_files():
         dest = project_root / rel_dest
         dest.parent.mkdir(parents=True, exist_ok=True)

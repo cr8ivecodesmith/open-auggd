@@ -21,7 +21,6 @@ from open_auggd.workspace.models import (
     ProgressLogEntry,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -108,7 +107,9 @@ def start(ws_path: Path) -> ToolResult:
     guard = require_files(
         attachments_file,
         error_code="EXPLORE_NOT_DONE",
-        message_template="explore/attachments.json not found ({missing}). Complete explore phase first.",
+        message_template=(
+            "explore/attachments.json not found ({missing}). Complete explore phase first."
+        ),
     )
     if guard:
         return guard
