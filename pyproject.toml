@@ -1,0 +1,73 @@
+[project]
+name = "open-auggd"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+license = { text = "MIT" }
+authors = [ { name = "Matt Lebrun" } ]
+requires-python = ">=3.12"
+
+dependencies = [
+    "click>=8.0",
+    "uuid7>=0.1",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.scripts]
+auggd = "open_auggd.cli.main:cli"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-xdist>=2.0",
+    "ruff>=0.9",
+    "mypy>=1.0",
+    "build>=0.10",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+python_files = ["tests.py", "test_*.py"]
+addopts = ""
+markers = [
+    "unit: Unit tests that run fast and don't hit external services",
+    "integration: Integration tests that may involve database or multiple components",
+    "slow: Slow tests that may involve external services",
+]
+
+[tool.ruff]
+line-length = 100
+exclude = [
+    "**/__pycache__",
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "C90", # mccabe complexity
+    "D",   # pydocstyle (docstring checks)
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+
