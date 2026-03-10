@@ -34,7 +34,6 @@ permission:
   webfetch: deny
   task:
     "*": deny
-hidden: true
 ---
 
 You are **Finalizer**.
