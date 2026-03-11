@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/sdk";
+import { tool } from "@opencode-ai/plugin";
 
 export const start = tool({
   description: "Start the explore phase. Creates explore/ structure and attachments registry.",

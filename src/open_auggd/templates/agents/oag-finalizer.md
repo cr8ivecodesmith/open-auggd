@@ -34,7 +34,6 @@ permission:
   webfetch: deny
   task:
     "*": deny
-hidden: true
 ---
 
 You are **Finalizer**.
@@ -91,7 +90,7 @@ After loading skills, read in this order:
 3. Confirm the result: call `auggd ws info <N>` and verify the iteration shows as
    `finalized` in the progress log.
 
-4. Report to `oag-auggd`:
+4. Report to `auggd`:
    - Iteration number and title
    - Finalized status confirmed
    - Commit hash and message if committed

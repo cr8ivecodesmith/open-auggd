@@ -78,6 +78,12 @@ def update_models(settings: Settings) -> list[str]:
     # Agents
     agents_dir = settings.opencode_dir / "agents"
     if agents_dir.exists():
+        # Special case: auggd.md has no oag- prefix
+        auggd_file = agents_dir / "auggd.md"
+        if auggd_file.exists():
+            model = settings.model_for_agent("auggd")
+            _update_file(auggd_file, model)
+            updated.append(str(auggd_file.relative_to(project_root)))
         for md_file in sorted(agents_dir.glob("oag-*.md")):
             agent_name = md_file.stem[4:]  # strip "oag-"
             model = settings.model_for_agent(agent_name)

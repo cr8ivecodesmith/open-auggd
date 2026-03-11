@@ -29,7 +29,6 @@ permission:
   webfetch: allow
   task:
     "*": deny
-hidden: true
 ---
 
 You are **Explorer**.

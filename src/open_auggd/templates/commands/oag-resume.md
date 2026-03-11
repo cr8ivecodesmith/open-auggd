@@ -1,7 +1,7 @@
 ---
 name: oag-resume
 description: Resume work on a workspace from the current phase. Reads artifact state and routes to the appropriate next action.
-agent: oag-auggd
+agent: auggd
 model: opencode/gpt-5-nano
 ---
 

@@ -31,7 +31,6 @@ permission:
   task:
     "*": deny
     "oag-explorer": allow
-hidden: true
 ---
 
 You are **Planner**.

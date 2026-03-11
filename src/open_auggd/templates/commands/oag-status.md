@@ -1,7 +1,7 @@
 ---
 name: oag-status
 description: Show the current state of a workspace — phase, artifact status, iteration summary, and next recommended action.
-agent: oag-auggd
+agent: auggd
 model: opencode/gpt-5-nano
 ---
 

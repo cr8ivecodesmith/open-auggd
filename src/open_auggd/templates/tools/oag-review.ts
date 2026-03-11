@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/sdk";
+import { tool } from "@opencode-ai/plugin";
 
 export const start = tool({
   description: "Start the review for iteration N. Requires dev_complete status.",
