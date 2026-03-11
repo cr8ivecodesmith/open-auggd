@@ -1,1 +1,1 @@
-"""CLI package for open-auggd."""
+"""Package."""

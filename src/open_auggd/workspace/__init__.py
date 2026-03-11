@@ -1,1 +1,1 @@
-"""Workspace package for open-auggd."""
+"""Package."""

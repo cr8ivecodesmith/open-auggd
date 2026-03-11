@@ -1,1 +1,1 @@
-"""open-auggd — agentic development workflow manager for OpenCode."""
+"""Open Auggd — orchestrated workflow engine for AI-assisted software development."""

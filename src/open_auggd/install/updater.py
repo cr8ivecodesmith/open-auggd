@@ -1,9 +1,4 @@
-"""Model frontmatter updater for managed agent and command files.
-
-``auggd update`` patches only the ``model:`` frontmatter line in managed
-``.opencode/agents/oag-*.md`` and ``.opencode/commands/oag-*.md`` files
-without touching content or other frontmatter fields.
-"""
+"""Model frontmatter update logic for managed agent and command files."""
 
 from __future__ import annotations
 
@@ -11,100 +6,83 @@ import re
 from pathlib import Path
 
 from open_auggd.config.settings import Settings
+from open_auggd.install.installer import InstallError
 
-_FRONTMATTER_DELIM = "---"
-_MODEL_RE = re.compile(r"^model:\s*.+$", re.MULTILINE)
-
-
-def _patch_model_frontmatter(content: str, new_model: str) -> str:
-    """Replace or insert the ``model:`` line in the YAML frontmatter.
-
-    If there is no existing ``model:`` line in the frontmatter block it is
-    inserted after the opening ``---``.
-
-    Args:
-        content: Full file content.
-        new_model: Model string to set.
-
-    Returns:
-        Updated file content.
-    """
-    lines = content.split("\n")
-    if not lines or lines[0].strip() != _FRONTMATTER_DELIM:
-        # No frontmatter — prepend a minimal block
-        return f"---\nmodel: {new_model}\n---\n{content}"
-
-    # Find closing ---
-    end_idx: int | None = None
-    for i, line in enumerate(lines[1:], start=1):
-        if line.strip() == _FRONTMATTER_DELIM:
-            end_idx = i
-            break
-
-    if end_idx is None:
-        # Malformed frontmatter — don't touch it
-        return content
-
-    # Search for an existing model: line within frontmatter
-    model_idx: int | None = None
-    for i in range(1, end_idx):
-        if re.match(r"^model:\s*", lines[i]):
-            model_idx = i
-            break
-
-    if model_idx is not None:
-        lines[model_idx] = f"model: {new_model}"
-    else:
-        # Insert after opening ---
-        lines.insert(1, f"model: {new_model}")
-
-    return "\n".join(lines)
+_MODEL_LINE_RE = re.compile(r"^(model:\s*)(.+)$", re.MULTILINE)
 
 
-def update_models(settings: Settings) -> list[str]:
-    """Patch the ``model:`` frontmatter in all managed agent and command files.
+def update_model_lines(project_root: Path, settings: Settings) -> list[str]:
+    """Rewrite the `model:` frontmatter line in all managed agent and command files.
 
-    Only files whose names start with ``oag-`` are touched.
+    Only agent (.opencode/agents/*.md) and command (.opencode/commands/*.md) files
+    are touched. Skills and tools are not modified.
+
+    Uses per-agent/per-command model from settings when configured; falls back to
+    settings.default_model.
 
     Args:
-        settings: Resolved settings (provides model values and paths).
+        project_root: Root of the project (where .auggd/ lives).
+        settings: Resolved settings providing model values.
 
     Returns:
-        List of relative path strings for every file updated.
+        List of relative paths that were updated.
+
+    Raises:
+        InstallError: If the project is not installed.
     """
-    project_root = settings.project_root
+    manifest_path = project_root / ".auggd" / "install-manifest.json"
+    if not manifest_path.exists():
+        raise InstallError(
+            "auggd is not installed in this project (no .auggd/install-manifest.json found)."
+        )
+
     updated: list[str] = []
 
-    # Agents
-    agents_dir = settings.opencode_dir / "agents"
-    if agents_dir.exists():
-        # Special case: auggd.md has no oag- prefix
-        auggd_file = agents_dir / "auggd.md"
-        if auggd_file.exists():
-            model = settings.model_for_agent("auggd")
-            _update_file(auggd_file, model)
-            updated.append(str(auggd_file.relative_to(project_root)))
-        for md_file in sorted(agents_dir.glob("oag-*.md")):
-            agent_name = md_file.stem[4:]  # strip "oag-"
-            model = settings.model_for_agent(agent_name)
-            _update_file(md_file, model)
-            updated.append(str(md_file.relative_to(project_root)))
-
-    # Commands
-    commands_dir = settings.opencode_dir / "commands"
-    if commands_dir.exists():
-        for md_file in sorted(commands_dir.glob("oag-*.md")):
-            cmd_name = md_file.stem[4:]  # strip "oag-"
-            model = settings.model_for_command(cmd_name)
-            _update_file(md_file, model)
-            updated.append(str(md_file.relative_to(project_root)))
+    for category, model_fn in (
+        ("agents", _agent_model),
+        ("commands", _command_model),
+    ):
+        target_dir = project_root / ".opencode" / category
+        if not target_dir.exists():
+            continue
+        for md_file in sorted(target_dir.glob("*.md")):
+            name = _stem_name(md_file.name, category)
+            model_value = model_fn(name, settings)
+            new_content = _replace_model_line(md_file.read_text(), model_value)
+            if new_content != md_file.read_text():
+                md_file.write_text(new_content)
+                updated.append(f".opencode/{category}/{md_file.name}")
 
     return updated
 
 
-def _update_file(path: Path, model: str) -> None:
-    """Read *path*, patch the model frontmatter, and write it back."""
-    content = path.read_text(encoding="utf-8")
-    patched = _patch_model_frontmatter(content, model)
-    if patched != content:
-        path.write_text(patched, encoding="utf-8")
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _stem_name(filename: str, category: str) -> str:
+    """Derive the bare agent/command name from a filename.
+
+    Examples:
+        oag-developer.md  → developer   (agents)
+        auggd.md          → auggd       (agents)
+        oag-develop.md    → develop     (commands)
+    """
+    stem = filename.removesuffix(".md")
+    if stem.startswith("oag-"):
+        stem = stem[4:]
+    return stem
+
+
+def _agent_model(name: str, settings: Settings) -> str:
+    return settings.effective_agent_model(name)
+
+
+def _command_model(name: str, settings: Settings) -> str:
+    return settings.effective_command_model(name)
+
+
+def _replace_model_line(content: str, model_value: str) -> str:
+    """Replace the value on the `model:` frontmatter line."""
+    return _MODEL_LINE_RE.sub(rf"\g<1>{model_value}", content)

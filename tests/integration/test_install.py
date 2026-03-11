@@ -1,244 +1,216 @@
-"""Integration tests for auggd install/uninstall lifecycle."""
-
-from __future__ import annotations
+"""Integration tests for the auggd install lifecycle CLI commands."""
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from open_auggd.config.settings import load_settings
-from open_auggd.install.installer import (
-    _iter_template_files,
-    install,
-    is_installed,
-    reset,
-    uninstall,
-)
+
+def auggd(args: list[str], cwd: Path, input: str | None = None) -> subprocess.CompletedProcess:
+    """Invoke the auggd CLI and return the completed process."""
+    return subprocess.run(
+        [sys.executable, "-m", "open_auggd.cli.main"] + args,
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        input=input,
+    )
 
 
-class TestInstallLifecycle:
-    """End-to-end install → uninstall tests."""
+@pytest.fixture()
+def project(tmp_path: Path) -> Path:
+    """Return a clean temp directory representing a fresh project."""
+    return tmp_path
 
-    @pytest.fixture
-    def project(self, tmp_path: Path) -> Path:
-        """A bare project directory."""
-        return tmp_path
 
-    def test_templates_are_accessible(self):
-        """Verify bundled templates are accessible (not lost in packaging)."""
-        templates = _iter_template_files()
-        assert len(templates) > 0, "No templates found - templates may be missing from wheel build"
+# ---------------------------------------------------------------------------
+# auggd install
+# ---------------------------------------------------------------------------
 
-        # Verify we have all expected template categories
-        template_dests = [str(dest) for _, dest in templates]
-        assert any("agents" in d for d in template_dests), "No agent templates found"
-        assert any("commands" in d for d in template_dests), "No command templates found"
-        assert any("skills" in d for d in template_dests), "No skill templates found"
-        assert any("tools" in d for d in template_dests), "No tool templates found"
 
-        # Verify each template file actually exists
-        for src, _ in templates:
-            assert src.exists(), f"Template source file missing: {src}"
+class TestInstallCommand:
+    def test_exits_zero(self, project):
+        result = auggd(["install"], cwd=project)
+        assert result.returncode == 0, result.stderr
 
-    def test_install_creates_opencode_dirs(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
-        assert (project / ".opencode" / "agents").is_dir()
-        assert (project / ".opencode" / "commands").is_dir()
-        assert (project / ".opencode" / "skills").is_dir()
-        assert (project / ".opencode" / "tools").is_dir()
-
-    def test_install_creates_auggd_dir(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
+    def test_creates_auggd_dir(self, project):
+        auggd(["install"], cwd=project)
         assert (project / ".auggd").is_dir()
+
+    def test_creates_auggd_toml(self, project):
+        auggd(["install"], cwd=project)
         assert (project / ".auggd" / "auggd.toml").exists()
+
+    def test_creates_install_manifest(self, project):
+        auggd(["install"], cwd=project)
         assert (project / ".auggd" / "install-manifest.json").exists()
 
-    def test_install_writes_agent_files(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
-        expected_agents = [
-            "auggd.md",
-            "oag-explorer.md",
-            "oag-planner.md",
-            "oag-developer.md",
-            "oag-reviewer.md",
-            "oag-finalizer.md",
-            "oag-documenter.md",
-        ]
-        agents_dir = project / ".opencode" / "agents"
-        for name in expected_agents:
-            assert (agents_dir / name).exists(), f"Missing: {name}"
+    def test_manifest_contains_all_files(self, project):
+        auggd(["install"], cwd=project)
+        manifest = json.loads((project / ".auggd" / "install-manifest.json").read_text())
+        assert len(manifest["files"]) == 37
 
-    def test_install_writes_command_files(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
-        expected_commands = [
-            "oag-explore.md",
-            "oag-plan.md",
-            "oag-develop.md",
-            "oag-review.md",
-            "oag-finalize.md",
-            "oag-document.md",
-            "oag-status.md",
-            "oag-resume.md",
-        ]
-        commands_dir = project / ".opencode" / "commands"
-        for name in expected_commands:
-            assert (commands_dir / name).exists(), f"Missing: {name}"
+    def test_creates_opencode_agents(self, project):
+        auggd(["install"], cwd=project)
+        assert (project / ".opencode" / "agents" / "auggd.md").exists()
 
-    def test_install_writes_tool_files(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
-        expected_tools = [
-            "oag-explore.ts",
-            "oag-plan.ts",
-            "oag-develop.ts",
-            "oag-review.ts",
-            "oag-finalize.ts",
-            "oag-document.ts",
-        ]
-        tools_dir = project / ".opencode" / "tools"
-        for name in expected_tools:
-            assert (tools_dir / name).exists(), f"Missing: {name}"
+    def test_creates_opencode_skills(self, project):
+        auggd(["install"], cwd=project)
+        assert (project / ".opencode" / "skills" / "oag-spec-standards" / "SKILL.md").exists()
 
-    def test_install_raises_if_already_installed(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
-        with pytest.raises(FileExistsError) as exc_info:
-            install(settings)
-        # Verify error message is informative
-        assert "already exist" in str(exc_info.value)
-        assert "--force" in str(exc_info.value)
+    def test_creates_opencode_tools(self, project):
+        auggd(["install"], cwd=project)
+        assert (project / ".opencode" / "tools" / "oag-ws.ts").exists()
 
-    def test_install_force_overwrites(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
-        install(settings, force=True)  # Should not raise
-        assert is_installed(settings)
+    def test_prints_success_message(self, project):
+        result = auggd(["install"], cwd=project)
+        assert "install" in result.stdout.lower()
 
-    def test_is_installed_false_before_install(self, project: Path):
-        settings = load_settings(project_root=project)
-        assert not is_installed(settings)
+    def test_fails_if_already_installed(self, project):
+        auggd(["install"], cwd=project)
+        result = auggd(["install"], cwd=project)
+        assert result.returncode != 0
 
-    def test_is_installed_true_after_install(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
-        assert is_installed(settings)
+    def test_already_installed_error_mentions_reset(self, project):
+        auggd(["install"], cwd=project)
+        result = auggd(["install"], cwd=project)
+        assert "reset" in result.stderr.lower()
 
-    def test_uninstall_removes_opencode_files(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
-        uninstall(settings)
-        # .opencode managed files should be gone
-        assert not (project / ".opencode" / "agents" / "auggd.md").exists()
 
-    def test_uninstall_removes_auggd_dir(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
-        uninstall(settings)
+# ---------------------------------------------------------------------------
+# auggd uninstall
+# ---------------------------------------------------------------------------
+
+
+class TestUninstallCommand:
+    def test_exits_zero_with_yes(self, project):
+        auggd(["install"], cwd=project)
+        result = auggd(["uninstall"], cwd=project, input="yes\n")
+        assert result.returncode == 0, result.stderr
+
+    def test_removes_auggd_dir(self, project):
+        auggd(["install"], cwd=project)
+        auggd(["uninstall"], cwd=project, input="yes\n")
         assert not (project / ".auggd").exists()
 
-    def test_uninstall_does_not_remove_user_opencode_files(self, project: Path):
-        settings = load_settings(project_root=project)
-        # Create a user file in .opencode/ before install
-        opencode_dir = project / ".opencode"
-        opencode_dir.mkdir(parents=True)
-        user_file = opencode_dir / "user-agent.md"
-        user_file.write_text("# User file")
+    def test_removes_managed_files(self, project):
+        auggd(["install"], cwd=project)
+        auggd(["uninstall"], cwd=project, input="yes\n")
+        assert not (project / ".opencode" / "agents" / "auggd.md").exists()
 
-        install(settings)
-        uninstall(settings)
+    def test_preserves_preexisting_opencode_files(self, project):
+        custom = project / ".opencode" / "agents" / "my-agent.md"
+        custom.parent.mkdir(parents=True, exist_ok=True)
+        custom.write_text("custom agent")
 
-        # User's file should survive
-        assert user_file.exists()
+        auggd(["install"], cwd=project)
+        auggd(["uninstall"], cwd=project, input="yes\n")
 
-    def test_reset_restores_files(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
+        assert custom.exists()
+        assert custom.read_text() == "custom agent"
 
-        # Corrupt an agent file
-        agent_file = project / ".opencode" / "agents" / "auggd.md"
-        agent_file.write_text("# CORRUPTED")
+    def test_aborts_without_yes(self, project):
+        auggd(["install"], cwd=project)
+        agent_path = project / ".opencode" / "agents" / "auggd.md"
 
-        reset(settings)
+        result = auggd(["uninstall"], cwd=project, input="no\n")
 
-        # Should be restored to bundled default content
-        content = agent_file.read_text()
-        assert "CORRUPTED" not in content
+        assert result.returncode != 0
+        assert agent_path.exists()
 
-    def test_gitignore_updated(self, project: Path):
-        settings = load_settings(project_root=project)
-        install(settings)
-        gitignore = project / ".gitignore"
-        assert gitignore.exists()
-        assert ".auggd/" in gitignore.read_text()
+    def test_fails_gracefully_when_not_installed(self, project):
+        result = auggd(["uninstall"], cwd=project, input="yes\n")
+        assert result.returncode != 0
 
-    def test_install_on_existing_opencode_dir_with_non_oag_files(self, project: Path):
-        """Install should succeed when .opencode/ exists with only user files.
 
-        (no oag-* conflicts).
+# ---------------------------------------------------------------------------
+# auggd update
+# ---------------------------------------------------------------------------
 
-        """
-        settings = load_settings(project_root=project)
-        # Create .opencode/ with a user-owned file (not prefixed oag-)
-        opencode_dir = project / ".opencode"
-        opencode_dir.mkdir(parents=True)
-        user_file = opencode_dir / "user-agent.md"
-        user_file.write_text("# User file")
 
-        # Install should succeed
-        install(settings)
-        assert is_installed(settings)
-        # User file should still exist
-        assert user_file.exists()
-        # Manifest should include all installed oag-* files
-        assert (project / ".auggd" / "install-manifest.json").exists()
+class TestUpdateCommand:
+    def test_exits_zero(self, project):
+        auggd(["install"], cwd=project)
+        result = auggd(["update"], cwd=project)
+        assert result.returncode == 0, result.stderr
 
-    def test_install_fails_with_full_conflict_list(self, project: Path):
-        """Pre-existing oag-* files should cause error listing all conflicts."""
-        settings = load_settings(project_root=project)
-        # Create .opencode/ with some pre-existing oag-* files
-        opencode_dir = project / ".opencode"
-        agents_dir = opencode_dir / "agents"
-        agents_dir.mkdir(parents=True)
-        (agents_dir / "auggd.md").write_text("# Old file 1")
-        (agents_dir / "oag-explorer.md").write_text("# Old file 2")
+    def test_rewrites_model_line_from_toml(self, project):
+        auggd(["install"], cwd=project)
+        # Write a custom model into auggd.toml
+        toml_path = project / ".auggd" / "auggd.toml"
+        content = toml_path.read_text()
+        content = content.replace(
+            'model = "opencode/gpt-5-nano"', 'model = "anthropic/claude-opus-4"'
+        )
+        toml_path.write_text(content)
 
-        # Install should fail with all conflicts listed
-        with pytest.raises(FileExistsError) as exc_info:
-            install(settings)
+        auggd(["update"], cwd=project)
 
-        error_msg = str(exc_info.value)
-        # Both conflicting files should be named in the error
-        assert "auggd.md" in error_msg or ".opencode/agents/auggd.md" in error_msg
-        assert "oag-explorer.md" in error_msg or ".opencode/agents/oag-explorer.md" in error_msg
-        assert "--force" in error_msg
+        agent_content = (project / ".opencode" / "agents" / "auggd.md").read_text()
+        assert "model: anthropic/claude-opus-4" in agent_content
 
-        # Verify no manifest was written (no partial install)
-        assert not (project / ".auggd" / "install-manifest.json").exists()
+    def test_does_not_change_name_frontmatter(self, project):
+        auggd(["install"], cwd=project)
+        toml_path = project / ".auggd" / "auggd.toml"
+        content = toml_path.read_text().replace(
+            'model = "opencode/gpt-5-nano"', 'model = "anthropic/claude-opus-4"'
+        )
+        toml_path.write_text(content)
 
-    def test_install_force_on_existing_opencode_dir(self, project: Path):
-        """--force should succeed even when oag-* files already exist."""
-        settings = load_settings(project_root=project)
-        # Create .opencode/ with pre-existing oag-* files
-        opencode_dir = project / ".opencode"
-        agents_dir = opencode_dir / "agents"
-        agents_dir.mkdir(parents=True)
-        old_file = agents_dir / "auggd.md"
-        old_file.write_text("# Old content")
+        auggd(["update"], cwd=project)
 
-        # Install with --force should succeed and update the file
-        written = install(settings, force=True)
-        assert is_installed(settings)
-        # The file should be updated
-        assert old_file.read_text() != "# Old content"
-        # Manifest should include the file
-        manifest_path = project / ".auggd" / "install-manifest.json"
-        assert manifest_path.exists()
-        manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
-        assert ".opencode/agents/auggd.md" in manifest_data["files"]
-        # written list should include all templates
-        assert len(written) > 10  # Should include agents, commands, tools, skills
+        agent_content = (project / ".opencode" / "agents" / "auggd.md").read_text()
+        assert "name: auggd" in agent_content
+
+    def test_fails_gracefully_when_not_installed(self, project):
+        result = auggd(["update"], cwd=project)
+        assert result.returncode != 0
+
+
+# ---------------------------------------------------------------------------
+# auggd reset
+# ---------------------------------------------------------------------------
+
+
+class TestResetCommand:
+    def test_exits_zero_with_yes(self, project):
+        auggd(["install"], cwd=project)
+        result = auggd(["reset"], cwd=project, input="yes\n")
+        assert result.returncode == 0, result.stderr
+
+    def test_restores_modified_file(self, project):
+        auggd(["install"], cwd=project)
+        agent_path = project / ".opencode" / "agents" / "auggd.md"
+        original = agent_path.read_text()
+        agent_path.write_text("corrupted")
+
+        auggd(["reset"], cwd=project, input="yes\n")
+
+        assert agent_path.read_text() == original
+
+    def test_does_not_touch_auggd_dir(self, project):
+        auggd(["install"], cwd=project)
+        toml_path = project / ".auggd" / "auggd.toml"
+        toml_path.write_text("[workspace]\ndir = 'custom'\n")
+
+        auggd(["reset"], cwd=project, input="yes\n")
+
+        assert "custom" in toml_path.read_text()
+
+    def test_aborts_without_yes(self, project):
+        auggd(["install"], cwd=project)
+        agent_path = project / ".opencode" / "agents" / "auggd.md"
+        agent_path.write_text("corrupted")
+
+        result = auggd(["reset"], cwd=project, input="no\n")
+
+        assert result.returncode != 0
+        assert agent_path.read_text() == "corrupted"
+
+    def test_fails_gracefully_when_not_installed_without_prompting(self, project):
+        """Not-installed error should surface without waiting for confirmation input."""
+        result = auggd(["reset"], cwd=project, input="")
+        assert result.returncode != 0
+        assert "not installed" in result.stderr.lower()

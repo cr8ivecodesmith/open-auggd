@@ -1,234 +1,213 @@
-"""Install, uninstall, and reset lifecycle for open-auggd.
-
-``auggd install``  — writes .auggd/ config + all .opencode/ managed files.
-``auggd uninstall`` — removes everything tracked in install-manifest.json.
-``auggd reset``    — restores .opencode/ managed files to bundled defaults.
-"""
+"""Install/uninstall/reset logic and install-manifest management."""
 
 from __future__ import annotations
 
+import importlib.resources
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
-from open_auggd.config.settings import Settings, generate_toml
+# Relative import path within the package for templates
+_TEMPLATES_PKG = "open_auggd.templates"
 
-# ---------------------------------------------------------------------------
-# Manifest helpers
-# ---------------------------------------------------------------------------
+_AUGGD_TOML_TEMPLATE = """\
+[workspace]
+dir = ".auggd/workspace"
 
+[docs]
+dir = "docs"
 
-def _read_manifest(settings: Settings) -> list[str]:
-    """Read the install manifest, returning a list of relative path strings."""
-    mf = settings.manifest_file
-    if not mf.exists():
-        return []
-    try:
-        data = json.loads(mf.read_text(encoding="utf-8"))
-        return list(data.get("files", []))
-    except (json.JSONDecodeError, OSError):
-        return []
+[defaults]
+model = "opencode/gpt-5-nano"
 
+[agents.models]
+# explorer = "anthropic/claude-sonnet-4-6"
+# developer = "anthropic/claude-sonnet-4-6"
 
-def _write_manifest(settings: Settings, files: list[str]) -> None:
-    """Write *files* (relative path strings) to the install manifest."""
-    data = {"files": sorted(set(files))}
-    settings.manifest_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+[commands.models]
+# develop = "anthropic/claude-sonnet-4-6"
+"""
 
 
-# ---------------------------------------------------------------------------
-# Template resolution
-# ---------------------------------------------------------------------------
+class InstallError(Exception):
+    """Raised when an install lifecycle operation cannot proceed."""
 
 
-def _templates_dir() -> Path:
-    """Return the path to the bundled templates directory."""
-    return Path(__file__).parent.parent / "templates"
+class Installer:
+    """Manages the auggd install lifecycle for a project root."""
 
+    def __init__(self, project_root: Path) -> None:
+        """Initialise with the project root directory."""
+        self._root = project_root
 
-def _iter_template_files() -> list[tuple[Path, Path]]:
-    """Yield (template_src, relative_dest) pairs for all managed templates.
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
 
-    Relative dest is relative to the project root (e.g. ``.opencode/agents/oag-auggd.md``).
-    """
-    tdir = _templates_dir()
-    pairs: list[tuple[Path, Path]] = []
+    def install(self) -> list[str]:
+        """Install auggd into the project.
 
-    # agents → .opencode/agents/
-    for f in sorted((tdir / "agents").glob("*.md")):
-        pairs.append((f, Path(".opencode") / "agents" / f.name))
+        Creates .auggd/ with auggd.toml and copies all bundled templates into
+        .opencode/. Writes install-manifest.json recording every file path written.
 
-    # commands → .opencode/commands/
-    for f in sorted((tdir / "commands").glob("*.md")):
-        pairs.append((f, Path(".opencode") / "commands" / f.name))
+        Returns:
+            List of relative paths written (same as manifest["files"]).
 
-    # skills → .opencode/skills/<dirname>/SKILL.md
-    skills_dir = tdir / "skills"
-    if skills_dir.exists():
-        for skill_dir in sorted(skills_dir.iterdir()):
-            if skill_dir.is_dir():
-                skill_md = skill_dir / "SKILL.md"
-                if skill_md.exists():
-                    dest = Path(".opencode") / "skills" / skill_dir.name / "SKILL.md"
-                    pairs.append((skill_md, dest))
+        Raises:
+            InstallError: If auggd is already installed. Use reset to restore files.
+        """
+        if self._manifest_path().exists():
+            raise InstallError(
+                "auggd is already installed in this project. "
+                "Use 'auggd reset' to restore managed files to bundled defaults."
+            )
 
-    # tools → .opencode/tools/
-    for f in sorted((tdir / "tools").glob("*.ts")):
-        pairs.append((f, Path(".opencode") / "tools" / f.name))
+        auggd_dir = self._root / ".auggd"
+        auggd_dir.mkdir(exist_ok=True)
 
-    return pairs
+        toml_path = auggd_dir / "auggd.toml"
+        if not toml_path.exists():
+            toml_path.write_text(_AUGGD_TOML_TEMPLATE)
 
+        written = self._copy_templates()
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+        manifest = {
+            "installed_at": datetime.now(timezone.utc).isoformat(),
+            "files": sorted(written),
+        }
+        (auggd_dir / "install-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return written
 
+    def uninstall(self, confirmed: bool) -> None:
+        """Remove all managed files and .auggd/ entirely.
 
-def install(settings: Settings, force: bool = False) -> list[str]:
-    """Run the full install sequence.
+        Pre-existing .opencode/ content not listed in the manifest is untouched.
 
-    Creates .auggd/ with config + manifest, and copies all bundled templates
-    into .opencode/.
+        Args:
+            confirmed: Must be True; False raises InstallError without touching anything.
 
-    Args:
-        settings: Resolved settings (used for paths and config generation).
-        force: If True, overwrite existing .opencode/ files silently.
+        Raises:
+            InstallError: If not confirmed, or if the project is not installed.
+        """
+        self._load_manifest()  # raises if not installed
+        if not confirmed:
+            raise InstallError(
+                "uninstall requires confirmed=True. Prompt the user: Type 'yes' to confirm:"
+            )
 
-    Returns:
-        List of relative path strings for every file written.
+        manifest = self._load_manifest()
+        _core_dirs = {
+            self._root / ".opencode" / d for d in ("agents", "commands", "skills", "tools")
+        }
 
-    Raises:
-        FileExistsError: If any target file already exists and *force* is False.
-    """
-    project_root = settings.project_root
-    written: list[str] = []
+        for rel in manifest["files"]:
+            target = self._root / rel
+            if target.exists():
+                target.unlink()
+            # Remove the immediate parent if it is now empty and is not one of
+            # the four core .opencode/ subdirectories (agents, commands, skills, tools).
+            parent = target.parent
+            if parent not in _core_dirs and parent.exists() and not any(parent.iterdir()):
+                parent.rmdir()
 
-    # --- Pre-flight conflict check ---
-    if not force:
-        conflicts: list[str] = []
-        for _, rel_dest in _iter_template_files():
-            dest = project_root / rel_dest
-            if dest.exists():
-                conflicts.append(str(rel_dest))
-        if conflicts:
-            msg = "The following managed files already exist:\n"
-            for path in sorted(conflicts):
-                msg += f"  {path}\n"
-            msg += "Use 'auggd install --force' to overwrite them."
-            raise FileExistsError(msg)
+        # Remove .auggd/ entirely
+        auggd_dir = self._root / ".auggd"
+        if auggd_dir.exists():
+            shutil.rmtree(auggd_dir)
 
-    # --- .auggd/ skeleton ---
-    settings.auggd_dir.mkdir(parents=True, exist_ok=True)
-    settings.workspace_dir.mkdir(parents=True, exist_ok=True)
+    def reset(self, confirmed: bool) -> list[str]:
+        """Restore all managed .opencode/ files to their bundled defaults.
 
-    # auggd.toml
-    config_path = settings.config_file
-    if not config_path.exists() or force:
-        config_path.write_text(generate_toml(settings), encoding="utf-8")
-        written.append(str(config_path.relative_to(project_root)))
+        .auggd/ config and workspace data are not affected.
+        The not-installed check runs before the confirmation check so the user
+        does not have to confirm before learning the operation cannot proceed.
 
-    # ensure .gitignore covers .auggd/
-    _ensure_gitignore(project_root)
+        Args:
+            confirmed: Must be True; False raises InstallError after the
+                not-installed guard passes.
 
-    # --- .opencode/ managed files ---
-    for src, rel_dest in _iter_template_files():
-        dest = project_root / rel_dest
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        rel_str = str(rel_dest)
-        shutil.copy2(src, dest)
-        written.append(rel_str)
+        Returns:
+            List of relative paths restored.
 
-    # write manifest
-    _write_manifest(settings, written)
-    return written
+        Raises:
+            InstallError: If the project is not installed, or if not confirmed.
+        """
+        self._load_manifest()  # raises if not installed — checked before confirmation
+        if not confirmed:
+            raise InstallError(
+                "reset requires confirmed=True. Prompt the user: Type 'yes' to confirm:"
+            )
+        return self._copy_templates()
 
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
 
-def uninstall(settings: Settings) -> list[str]:
-    """Remove all files listed in the install manifest and the .auggd/ dir.
+    def _manifest_path(self) -> Path:
+        return self._root / ".auggd" / "install-manifest.json"
 
-    Args:
-        settings: Resolved settings.
+    def _load_manifest(self) -> dict:
+        """Load and return the install manifest.
 
-    Returns:
-        List of relative path strings removed.
-    """
-    project_root = settings.project_root
-    removed: list[str] = []
+        Raises:
+            InstallError: If the manifest does not exist.
+        """
+        p = self._manifest_path()
+        if not p.exists():
+            raise InstallError(
+                "auggd is not installed in this project (no .auggd/install-manifest.json found)."
+            )
+        return json.loads(p.read_text())  # type: ignore[no-any-return]
 
-    manifest_files = _read_manifest(settings)
-    for rel in manifest_files:
-        target = project_root / rel
-        if target.exists():
-            target.unlink()
-            removed.append(rel)
-            # Remove empty parent dirs up to .opencode/
-            _remove_empty_parents(target, project_root / ".opencode")
+    def _copy_templates(self) -> list[str]:
+        """Copy all bundled templates into .opencode/; return relative paths."""
+        written: list[str] = []
+        opencode = self._root / ".opencode"
 
-    # Remove .auggd/ entirely
-    if settings.auggd_dir.exists():
-        shutil.rmtree(settings.auggd_dir)
-        removed.append(".auggd/")
+        # We traverse the templates package using importlib.resources.
+        # Python 3.12 supports Traversable API cleanly.
+        templates_ref = importlib.resources.files(_TEMPLATES_PKG)
 
-    return removed
+        for category in ("agents", "commands", "skills", "tools"):
+            src_category = templates_ref / category
+            dst_category = opencode / category
 
+            if category == "skills":
+                # skills/<skill-name>/SKILL.md
+                for skill_dir in _iter_subdirs(src_category):
+                    skill_name = skill_dir.name
+                    dst_skill_dir = dst_category / skill_name
+                    dst_skill_dir.mkdir(parents=True, exist_ok=True)
+                    skill_md = skill_dir / "SKILL.md"
+                    dst_file = dst_skill_dir / "SKILL.md"
+                    dst_file.write_text(skill_md.read_text())
+                    written.append(f".opencode/skills/{skill_name}/SKILL.md")
+            else:
+                # agents/*.md, commands/*.md, tools/*.ts
+                dst_category.mkdir(parents=True, exist_ok=True)
+                for src_file in _iter_files(src_category):
+                    dst_file = dst_category / src_file.name
+                    dst_file.write_text(src_file.read_text())
+                    written.append(f".opencode/{category}/{src_file.name}")
 
-def reset(settings: Settings) -> list[str]:
-    """Restore all .opencode/ managed files to bundled defaults.
-
-    .auggd/ and workspace data are untouched.
-
-    Args:
-        settings: Resolved settings.
-
-    Returns:
-        List of relative path strings restored.
-    """
-    project_root = settings.project_root
-    restored: list[str] = []
-
-    for src, rel_dest in _iter_template_files():
-        dest = project_root / rel_dest
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest)
-        restored.append(str(rel_dest))
-
-    # Refresh manifest
-    existing = _read_manifest(settings)
-    all_files = list(set(existing) | set(restored))
-    _write_manifest(settings, all_files)
-
-    return restored
+        return written
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# importlib.resources helpers (Traversable API)
 # ---------------------------------------------------------------------------
 
 
-def _remove_empty_parents(path: Path, stop_at: Path) -> None:
-    """Remove empty parent directories between *path* and *stop_at* (exclusive)."""
-    parent = path.parent
-    while parent != stop_at and parent != parent.parent:
-        try:
-            parent.rmdir()  # only removes if empty
-        except OSError:
-            break
-        parent = parent.parent
+def _iter_subdirs(traversable):  # type: ignore[return]
+    """Yield Traversable items that are directories."""
+    for item in traversable.iterdir():
+        if item.is_dir():
+            yield item
 
 
-def _ensure_gitignore(project_root: Path) -> None:
-    """Add .auggd/ to .gitignore if not already present."""
-    gitignore = project_root / ".gitignore"
-    entry = ".auggd/"
-    if gitignore.exists():
-        content = gitignore.read_text(encoding="utf-8")
-        if entry not in content.splitlines():
-            with open(gitignore, "a", encoding="utf-8") as f:
-                f.write(f"\n{entry}\n")
-    else:
-        gitignore.write_text(f"{entry}\n", encoding="utf-8")
-
-
-def is_installed(settings: Settings) -> bool:
-    """Return True if auggd appears to be installed in this project."""
-    return settings.manifest_file.exists()
+def _iter_files(traversable):  # type: ignore[return]
+    """Yield Traversable items that are files."""
+    for item in traversable.iterdir():
+        if item.is_file():
+            yield item

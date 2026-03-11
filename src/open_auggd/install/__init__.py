@@ -1,1 +1,1 @@
-"""Install package for open-auggd."""
+"""Package."""

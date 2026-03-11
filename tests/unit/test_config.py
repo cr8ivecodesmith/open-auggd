@@ -1,96 +1,203 @@
-"""Unit tests for config loading."""
-
-from __future__ import annotations
+"""Unit tests for config/settings.py."""
 
 from pathlib import Path
 
-from open_auggd.config.settings import generate_toml, load_settings
+import pytest
+
+from open_auggd.config.settings import Settings, load_settings
 
 
-class TestLoadSettings:
-    """Tests for load_settings()."""
+@pytest.fixture()
+def tmp_project(tmp_path):
+    """Return a tmp dir with no auggd.toml (bare project)."""
+    return tmp_path
 
-    def test_defaults_no_config_file(self, tmp_path: Path):
-        settings = load_settings(project_root=tmp_path)
-        assert settings.project_root == tmp_path
-        assert settings.workspace_dir == tmp_path / ".auggd" / "workspace"
-        assert settings.docs_dir == tmp_path / "docs"
-        assert settings.default_model == "opencode/gpt-5-nano"
 
-    def test_cli_overrides(self, tmp_path: Path):
-        ws = tmp_path / "custom-ws"
-        settings = load_settings(
-            project_root=tmp_path,
-            workspace_dir=ws,
-            default_model="anthropic/claude-opus-4",
-        )
-        assert settings.workspace_dir == ws
-        assert settings.default_model == "anthropic/claude-opus-4"
+@pytest.fixture()
+def project_with_toml(tmp_path):
+    """Return a tmp dir with a minimal .auggd/auggd.toml."""
+    auggd_dir = tmp_path / ".auggd"
+    auggd_dir.mkdir()
+    (auggd_dir / "auggd.toml").write_text(
+        "[workspace]\n"
+        'dir = ".auggd/workspace"\n'
+        "\n"
+        "[docs]\n"
+        'dir = "docs"\n'
+        "\n"
+        "[defaults]\n"
+        'model = "anthropic/claude-opus-4"\n'
+        "\n"
+        "[agents.models]\n"
+        'developer = "anthropic/claude-sonnet-4-6"\n'
+        "\n"
+        "[commands.models]\n"
+        'develop = "anthropic/claude-sonnet-4-6"\n'
+    )
+    return tmp_path
 
-    def test_env_override_workspace(self, tmp_path: Path, monkeypatch):
-        custom_ws = str(tmp_path / "env-ws")
-        monkeypatch.setenv("OAG_WORKSPACE_DIR", custom_ws)
-        settings = load_settings(project_root=tmp_path)
-        assert settings.workspace_dir == Path(custom_ws)
 
-    def test_env_override_model(self, tmp_path: Path, monkeypatch):
+# --- defaults when no TOML ---
+
+
+class TestDefaultSettings:
+    def test_default_model(self, tmp_project):
+        s = load_settings(tmp_project)
+        assert s.default_model == "opencode/gpt-5-nano"
+
+    def test_default_workspace_dir(self, tmp_project):
+        s = load_settings(tmp_project)
+        assert s.workspace_dir == ".auggd/workspace"
+
+    def test_default_docs_dir(self, tmp_project):
+        s = load_settings(tmp_project)
+        assert s.docs_dir == "docs"
+
+    def test_empty_agent_models(self, tmp_project):
+        s = load_settings(tmp_project)
+        assert s.agent_models == {}
+
+    def test_empty_command_models(self, tmp_project):
+        s = load_settings(tmp_project)
+        assert s.command_models == {}
+
+
+# --- TOML values override defaults ---
+
+
+class TestTomlSettings:
+    def test_model_from_toml(self, project_with_toml):
+        s = load_settings(project_with_toml)
+        assert s.default_model == "anthropic/claude-opus-4"
+
+    def test_workspace_dir_from_toml(self, project_with_toml):
+        s = load_settings(project_with_toml)
+        assert s.workspace_dir == ".auggd/workspace"
+
+    def test_docs_dir_from_toml(self, project_with_toml):
+        s = load_settings(project_with_toml)
+        assert s.docs_dir == "docs"
+
+    def test_agent_models_from_toml(self, project_with_toml):
+        s = load_settings(project_with_toml)
+        assert s.agent_models["developer"] == "anthropic/claude-sonnet-4-6"
+
+    def test_command_models_from_toml(self, project_with_toml):
+        s = load_settings(project_with_toml)
+        assert s.command_models["develop"] == "anthropic/claude-sonnet-4-6"
+
+
+# --- env vars override TOML ---
+
+
+class TestEnvOverrides:
+    def test_oag_default_model_overrides_toml(self, project_with_toml, monkeypatch):
         monkeypatch.setenv("OAG_DEFAULT_MODEL", "openai/gpt-4o")
-        settings = load_settings(project_root=tmp_path)
-        assert settings.default_model == "openai/gpt-4o"
+        s = load_settings(project_with_toml)
+        assert s.default_model == "openai/gpt-4o"
 
-    def test_env_agent_model(self, tmp_path: Path, monkeypatch):
-        monkeypatch.setenv("OAG_EXPLORER_MODEL", "anthropic/claude-haiku-4-5")
-        settings = load_settings(project_root=tmp_path)
-        assert settings.agent_models.explorer == "anthropic/claude-haiku-4-5"
-        assert settings.model_for_agent("explorer") == "anthropic/claude-haiku-4-5"
+    def test_oag_default_model_overrides_defaults(self, tmp_project, monkeypatch):
+        monkeypatch.setenv("OAG_DEFAULT_MODEL", "openai/gpt-4o")
+        s = load_settings(tmp_project)
+        assert s.default_model == "openai/gpt-4o"
 
-    def test_model_for_agent_fallback(self, tmp_path: Path):
-        settings = load_settings(project_root=tmp_path)
-        assert settings.model_for_agent("explorer") == settings.default_model
+    def test_oag_agent_model_env(self, tmp_project, monkeypatch):
+        monkeypatch.setenv("OAG_DEVELOPER_MODEL", "openai/gpt-4o")
+        s = load_settings(tmp_project)
+        assert s.agent_models["developer"] == "openai/gpt-4o"
 
-    def test_toml_config(self, tmp_path: Path):
+    def test_oag_agent_model_env_overrides_toml(self, project_with_toml, monkeypatch):
+        monkeypatch.setenv("OAG_DEVELOPER_MODEL", "openai/gpt-4o")
+        s = load_settings(project_with_toml)
+        assert s.agent_models["developer"] == "openai/gpt-4o"
+
+    def test_oag_command_model_env(self, tmp_project, monkeypatch):
+        monkeypatch.setenv("OAG_DEVELOP_MODEL", "openai/gpt-4o")
+        s = load_settings(tmp_project)
+        assert s.command_models["develop"] == "openai/gpt-4o"
+
+    def test_oag_workspace_dir_env(self, tmp_project, monkeypatch):
+        monkeypatch.setenv("OAG_WORKSPACE_DIR", "/tmp/custom-ws")
+        s = load_settings(tmp_project)
+        assert s.workspace_dir == "/tmp/custom-ws"
+
+    def test_oag_docs_dir_env(self, tmp_project, monkeypatch):
+        monkeypatch.setenv("OAG_DOCS_DIR", "/tmp/custom-docs")
+        s = load_settings(tmp_project)
+        assert s.docs_dir == "/tmp/custom-docs"
+
+
+# --- path expansion ---
+
+
+class TestPathExpansion:
+    def test_tilde_expansion_workspace(self, tmp_path, monkeypatch):
         auggd_dir = tmp_path / ".auggd"
         auggd_dir.mkdir()
-        toml_content = """
-[workspace]
-dir = "/tmp/myworkspace"
+        (auggd_dir / "auggd.toml").write_text("[workspace]\ndir = '~/myworkspace'\n")
+        s = load_settings(tmp_path)
+        assert "~" not in s.workspace_dir
+        assert s.workspace_dir.startswith(str(Path.home()))
 
-[models]
-default = "anthropic/claude-sonnet-4"
-"""
-        (auggd_dir / "auggd.toml").write_text(toml_content)
-        settings = load_settings(project_root=tmp_path)
-        assert settings.workspace_dir == Path("/tmp/myworkspace")
-        assert settings.default_model == "anthropic/claude-sonnet-4"
-
-    def test_tilde_expansion(self, tmp_path: Path, monkeypatch):
-        monkeypatch.setenv("OAG_WORKSPACE_DIR", "~/auggd-ws")
-        settings = load_settings(project_root=tmp_path)
-        assert not str(settings.workspace_dir).startswith("~")
+    def test_env_var_expansion_workspace(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MY_WS", "/tmp/expanded-ws")
+        auggd_dir = tmp_path / ".auggd"
+        auggd_dir.mkdir()
+        (auggd_dir / "auggd.toml").write_text("[workspace]\ndir = '$MY_WS'\n")
+        s = load_settings(tmp_path)
+        assert s.workspace_dir == "/tmp/expanded-ws"
 
 
-class TestSettings:
-    """Tests for the Settings dataclass."""
-
-    def test_auggd_dir(self, tmp_path: Path):
-        settings = load_settings(project_root=tmp_path)
-        assert settings.auggd_dir == tmp_path / ".auggd"
-
-    def test_opencode_dir(self, tmp_path: Path):
-        settings = load_settings(project_root=tmp_path)
-        assert settings.opencode_dir == tmp_path / ".opencode"
-
-    def test_manifest_file(self, tmp_path: Path):
-        settings = load_settings(project_root=tmp_path)
-        assert settings.manifest_file == tmp_path / ".auggd" / "install-manifest.json"
+# --- Settings dataclass ---
 
 
-class TestGenerateToml:
-    """Tests for generate_toml()."""
+class TestSettingsDataclass:
+    def test_settings_is_dataclass(self):
+        s = Settings(
+            workspace_dir=".auggd/workspace",
+            docs_dir="docs",
+            default_model="opencode/gpt-5-nano",
+            agent_models={},
+            command_models={},
+        )
+        assert s.default_model == "opencode/gpt-5-nano"
 
-    def test_roundtrip(self, tmp_path: Path):
-        settings = load_settings(project_root=tmp_path)
-        toml_str = generate_toml(settings)
-        assert "[workspace]" in toml_str
-        assert "[models]" in toml_str
-        assert "opencode/gpt-5-nano" in toml_str
+    def test_effective_model_for_agent_uses_specific(self):
+        s = Settings(
+            workspace_dir=".auggd/workspace",
+            docs_dir="docs",
+            default_model="opencode/gpt-5-nano",
+            agent_models={"developer": "anthropic/claude-sonnet-4-6"},
+            command_models={},
+        )
+        assert s.effective_agent_model("developer") == "anthropic/claude-sonnet-4-6"
+
+    def test_effective_model_for_agent_falls_back_to_default(self):
+        s = Settings(
+            workspace_dir=".auggd/workspace",
+            docs_dir="docs",
+            default_model="opencode/gpt-5-nano",
+            agent_models={},
+            command_models={},
+        )
+        assert s.effective_agent_model("explorer") == "opencode/gpt-5-nano"
+
+    def test_effective_model_for_command_uses_specific(self):
+        s = Settings(
+            workspace_dir=".auggd/workspace",
+            docs_dir="docs",
+            default_model="opencode/gpt-5-nano",
+            agent_models={},
+            command_models={"develop": "anthropic/claude-sonnet-4-6"},
+        )
+        assert s.effective_command_model("develop") == "anthropic/claude-sonnet-4-6"
+
+    def test_effective_model_for_command_falls_back_to_default(self):
+        s = Settings(
+            workspace_dir=".auggd/workspace",
+            docs_dir="docs",
+            default_model="opencode/gpt-5-nano",
+            agent_models={},
+            command_models={},
+        )
+        assert s.effective_command_model("explore") == "opencode/gpt-5-nano"
