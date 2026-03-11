@@ -882,15 +882,16 @@ Structured as vertical slices for incremental manual verification.
 
 ### Slice 1 — Install Lifecycle
 
-- [ ] `auggd install` creates `.auggd/` and `.opencode/` with all listed files
-- [ ] `install-manifest.json` records every written path
-- [ ] `auggd uninstall` removes only managed files; pre-existing `.opencode/` content untouched
-- [ ] `auggd update` modifies only `model:` frontmatter line; content body unchanged
-- [ ] `auggd reset` restores managed files to bundled defaults with confirmation prompt
+- [x] `auggd install` creates `.auggd/` and `.opencode/` with all listed files
+- [x] `install-manifest.json` records every written path
+- [x] `auggd uninstall` removes only managed files; pre-existing `.opencode/` content untouched
+- [x] `auggd update` modifies only `model:` frontmatter line; content body unchanged
+- [x] `auggd reset` restores managed files to bundled defaults with confirmation prompt
 
 ### Slice 2 — Workspace Management
 
-- [ ] `auggd ws create <slug>` creates workspace dir, `workspace-metadata.json`, empty `iteration-log.json`, empty `files-manifest.json`
+- [ ] `auggd ws create <slug>` creates workspace dir, `workspace-metadata.json`, empty `iteration-log.json`, empty `files-manifest.json`,
+       empty `attachments/`, empty `tmp/`, and returns workspace `<ID>-slug`
 - [ ] `auggd ws list` returns all workspaces sorted by creation time
 - [ ] `auggd ws info <N>` returns full context prime schema
 - [ ] `auggd ws info <N> --last=<N>` respects iteration limit
