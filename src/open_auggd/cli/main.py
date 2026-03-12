@@ -7,6 +7,7 @@ from pathlib import Path
 
 import click
 
+from open_auggd.cli.workspace import ws
 from open_auggd.config.settings import load_settings
 from open_auggd.install.installer import Installer, InstallError
 from open_auggd.install.updater import update_model_lines
@@ -20,6 +21,9 @@ def _project_root() -> Path:
 @click.group()
 def cli() -> None:
     """Auggd — orchestrated AI workflow engine."""
+
+
+cli.add_command(ws)
 
 
 @cli.command()
