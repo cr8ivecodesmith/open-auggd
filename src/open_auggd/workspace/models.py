@@ -39,21 +39,17 @@ def _parse_dt(value: str) -> datetime:
 
 @dataclass
 class WorkspaceMetadata:
-    """Identity and current state of a workspace.
+    """Identity record for a workspace.
 
-    Written by ``auggd ws create``. Updated by phase gate actions.
+    Written by ``auggd ws create``. ``updated_at`` is touched on any mutation.
+    Phase state, iteration, title, scope, and non-goals are derived on demand
+    from ``iteration-log.json`` and ``spec.md`` — they are not stored here.
     """
 
     id: str
     slug: str
     created_at: datetime
     updated_at: datetime
-    current_phase: Phase
-    current_iteration: int
-    title: str
-    description: str
-    scope: list[str]
-    non_goals: list[str]
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
@@ -62,12 +58,6 @@ class WorkspaceMetadata:
             "slug": self.slug,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
-            "current_phase": self.current_phase.value,
-            "current_iteration": self.current_iteration,
-            "title": self.title,
-            "description": self.description,
-            "scope": list(self.scope),
-            "non_goals": list(self.non_goals),
         }
 
     @classmethod
@@ -78,12 +68,6 @@ class WorkspaceMetadata:
             slug=data["slug"],
             created_at=_parse_dt(data["created_at"]),
             updated_at=_parse_dt(data["updated_at"]),
-            current_phase=Phase(data["current_phase"]),
-            current_iteration=data["current_iteration"],
-            title=data.get("title", ""),
-            description=data.get("description", ""),
-            scope=list(data.get("scope", [])),
-            non_goals=list(data.get("non_goals", [])),
         )
 
 
@@ -96,18 +80,19 @@ class WorkspaceMetadata:
 class WorkspaceListItem:
     """Enriched workspace entry for ``auggd ws list`` output.
 
-    Carries the raw metadata plus derived fields that require reading
-    additional artifact files (``spec.md``, ``iteration-log.json``).
+    Carries the raw metadata plus fields derived on demand from
+    ``iteration-log.json`` and ``spec.md``.
 
-    ``started`` is ``False`` when ``iteration-log.json`` is empty — i.e.
-    no phase has been entered yet. The list renders phase and iteration as
-    ``not started`` / ``-`` / ``-`` in that case.
+    ``phase``, ``iteration``, and ``interrupted`` are all ``None`` when the
+    iteration log is empty (workspace not yet started). The list renders them
+    as ``not started`` / ``-`` / ``-`` in that case.
     """
 
     metadata: WorkspaceMetadata
     title: str
-    interrupted: bool
-    started: bool
+    phase: str | None
+    iteration: int | None
+    interrupted: bool | None
 
 
 # ---------------------------------------------------------------------------

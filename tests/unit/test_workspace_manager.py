@@ -11,7 +11,6 @@ WorkspaceManager = _mod.WorkspaceManager
 WorkspaceError = _mod.WorkspaceError
 
 _models_mod = importlib.import_module("open_auggd.workspace.models")
-Phase = _models_mod.Phase
 WorkspaceListItem = _models_mod.WorkspaceListItem
 
 
@@ -105,23 +104,19 @@ def test_create_files_manifest_is_empty_dict(manager, ws_dir):
     assert data == {}
 
 
-def test_create_initial_phase_is_explore(manager):
+def test_create_metadata_json_has_only_identity_fields(manager, ws_dir):
     meta = manager.create("my-feature")
-    assert meta.current_phase is Phase.EXPLORE
+    ws_path = ws_dir / f"{meta.id}-{meta.slug}"
+    data = json.loads((ws_path / "workspace-metadata.json").read_text())
+    assert set(data.keys()) == {"id", "slug", "created_at", "updated_at"}
 
 
-def test_create_initial_iteration_is_zero(manager):
-    meta = manager.create("my-feature")
-    assert meta.current_iteration == 0
-
-
-def test_create_metadata_json_round_trips(manager, ws_dir):
+def test_create_metadata_json_id_matches(manager, ws_dir):
     meta = manager.create("my-feature")
     ws_path = ws_dir / f"{meta.id}-{meta.slug}"
     data = json.loads((ws_path / "workspace-metadata.json").read_text())
     assert data["id"] == meta.id
     assert data["slug"] == meta.slug
-    assert data["current_phase"] == "explore"
 
 
 # ---------------------------------------------------------------------------
@@ -178,32 +173,57 @@ def test_list_title_from_spec_md(manager, ws_dir):
     assert result[0].title == "My Great Feature"
 
 
-def test_list_started_false_when_iteration_log_empty(manager):
+def test_list_phase_none_when_log_empty(manager):
     manager.create("my-ws")
     result = manager.list()
-    assert result[0].started is False
+    assert result[0].phase is None
 
 
-def test_list_started_true_when_iteration_log_has_entries(manager, ws_dir):
+def test_list_iteration_none_when_log_empty(manager):
+    manager.create("my-ws")
+    result = manager.list()
+    assert result[0].iteration is None
+
+
+def test_list_interrupted_none_when_log_empty(manager):
+    manager.create("my-ws")
+    result = manager.list()
+    assert result[0].interrupted is None
+
+
+def test_list_phase_derived_from_log(manager, ws_dir):
     meta = manager.create("my-ws")
     ws_path = ws_dir / f"{meta.id}-{meta.slug}"
     (ws_path / "iteration-log.json").write_text(
         json.dumps({"0": {"explore": {"status": "in-progress"}}})
     )
     result = manager.list()
-    assert result[0].started is True
+    assert result[0].phase == "explore"
 
 
-def test_list_interrupted_false_when_no_interruption(manager):
-    manager.create("my-ws")
+def test_list_iteration_derived_from_log(manager, ws_dir):
+    meta = manager.create("my-ws")
+    ws_path = ws_dir / f"{meta.id}-{meta.slug}"
+    (ws_path / "iteration-log.json").write_text(
+        json.dumps({"0": {"explore": {"status": "in-progress"}}})
+    )
+    result = manager.list()
+    assert result[0].iteration == 0
+
+
+def test_list_interrupted_false_when_current_phase_not_interrupted(manager, ws_dir):
+    meta = manager.create("my-ws")
+    ws_path = ws_dir / f"{meta.id}-{meta.slug}"
+    (ws_path / "iteration-log.json").write_text(
+        json.dumps({"0": {"explore": {"status": "in-progress"}}})
+    )
     result = manager.list()
     assert result[0].interrupted is False
 
 
-def test_list_interrupted_true_when_current_iteration_has_interrupted_phase(manager, ws_dir):
+def test_list_interrupted_true_when_current_phase_is_interrupted(manager, ws_dir):
     meta = manager.create("my-ws")
     ws_path = ws_dir / f"{meta.id}-{meta.slug}"
-    # Write iteration-log with current_iteration=0, explore status=interrupted.
     (ws_path / "iteration-log.json").write_text(
         json.dumps({"0": {"explore": {"status": "interrupted"}}})
     )
@@ -211,15 +231,34 @@ def test_list_interrupted_true_when_current_iteration_has_interrupted_phase(mana
     assert result[0].interrupted is True
 
 
-def test_list_interrupted_false_when_other_iteration_interrupted(manager, ws_dir):
+def test_list_interrupted_false_when_prior_iteration_was_interrupted(manager, ws_dir):
     meta = manager.create("my-ws")
     ws_path = ws_dir / f"{meta.id}-{meta.slug}"
-    # current_iteration=0 in metadata, but interruption is in iteration 1.
+    # iteration 0 was interrupted, but current (highest) is iteration 1 with develop in-progress
     (ws_path / "iteration-log.json").write_text(
-        json.dumps({"1": {"develop": {"status": "interrupted"}}})
+        json.dumps(
+            {
+                "0": {"explore": {"status": "interrupted"}},
+                "1": {"develop": {"status": "in-progress"}},
+            }
+        )
     )
     result = manager.list()
     assert result[0].interrupted is False
+    assert result[0].phase == "develop"
+    assert result[0].iteration == 1
+
+
+def test_list_interrupted_reflects_current_phase_not_any_phase(manager, ws_dir):
+    meta = manager.create("my-ws")
+    ws_path = ws_dir / f"{meta.id}-{meta.slug}"
+    # explore is done, plan is interrupted — current phase is plan
+    (ws_path / "iteration-log.json").write_text(
+        json.dumps({"0": {"explore": {"status": "done"}, "plan": {"status": "interrupted"}}})
+    )
+    result = manager.list()
+    assert result[0].phase == "plan"
+    assert result[0].interrupted is True
 
 
 # ---------------------------------------------------------------------------

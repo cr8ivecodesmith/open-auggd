@@ -70,24 +70,18 @@ stored separately in `workspace-metadata.json` for clean programmatic access.
 
 ### `workspace-metadata.json`
 
-Identity and current state. Written by `auggd ws create`. Updated by phase gate actions.
+Identity record only. Written by `auggd ws create`. `updated_at` is touched on any
+workspace mutation. Phase state, iteration, title, scope, and non-goals are all derived
+on demand from `iteration-log.json` and `spec.md` — they are not stored here.
 
 ```json
 {
   "id": "AZXyo7HEfomfPS0bTF1uf",
   "slug": "add-user-authentication",
   "created_at": "2026-03-11T00:00:00Z",
-  "updated_at": "2026-03-11T00:00:00Z",
-  "current_phase": "develop",
-  "current_iteration": 1,
-  "title": "",
-  "description": "",
-  "scope": [],
-  "non_goals": []
+  "updated_at": "2026-03-11T00:00:00Z"
 }
 ```
-
-`current_phase` values: `explore | plan | develop | review | finalize | done`
 
 ### `iteration-log.json`
 
@@ -292,7 +286,7 @@ a phase that already has an entry is an error and will be rejected by the tool.
 
 | Phase | Prerequisite to approve |
 |---|---|
-| explore | summary non-empty; `<topic>.md` files pass frontmatter and section validation |
+| explore | objective non-empty; at least one `<topic>.md` in `attachments/`; topic files pass frontmatter and section validation |
 | plan (iter 0) | acceptance_criteria non-empty; objective non-empty; `spec.md` passes frontmatter and section validation |
 | plan (iter N) | acceptance_criteria non-empty, objective non-empty |
 | develop | status = `dev-complete` |
@@ -417,30 +411,30 @@ to have no unresolved (non-approved) entries before a new iteration can begin.
 | `explore` | `start` | workspace exists | creates `attachments/`, sets explore status `in-progress` |
 | `explore` | `update` | explore started | merges data into iteration-log explore entry |
 | `explore` | `status` | — | reads explore entry from iteration-log |
-| `explore` | `approve` | summary non-empty; topic files pass validation | sets status `done`, updates `workspace-metadata.json` |
+| `explore` | `approve` | objective non-empty; at least one topic file; topic files pass validation | sets status `done`; touches `workspace-metadata.json` `updated_at` |
 | `explore` | `redirect <phase>` | — | sets target phase `in-progress`, appends note to target open_questions |
 | `explore` | `interrupt` | — | sets status `interrupted` |
 | `plan` | `start` | explore status = done; or current iteration > 0 | sets plan status `in-progress` |
 | `plan` | `create` | no unresolved phases in current iteration | creates next iteration entry in iteration-log |
 | `plan` | `update` | plan started | merges data into current iteration plan entry |
 | `plan` | `status` | — | reads current iteration plan entry |
-| `plan` | `approve` | acceptance_criteria non-empty; iter 0: spec.md passes validation | sets status `done`, advances current_phase |
+| `plan` | `approve` | acceptance_criteria non-empty; iter 0: spec.md passes validation | sets status `done`; touches `workspace-metadata.json` `updated_at` |
 | `plan` | `redirect <phase>` | — | sets target phase `in-progress`, appends note |
 | `plan` | `interrupt` | — | sets status `interrupted` |
 | `develop` | `start` | plan approved for current iteration | sets develop status `in-progress` |
 | `develop` | `update` | develop started | merges data into current iteration develop entry |
 | `develop` | `status` | — | reads current iteration develop entry |
 | `develop` | `done` | develop `in-progress` | sets status `dev-complete`; agent-triggered |
-| `develop` | `approve` | status `dev-complete` | advances to review; human-triggered gate |
+| `develop` | `approve` | status `dev-complete` | sets status `approved`; human-triggered gate |
 | `develop` | `redirect <phase>` | — | sets target phase `in-progress`, appends note |
 | `develop` | `interrupt` | — | sets status `interrupted` |
 | `review` | `start` | develop approved | sets review status `in-progress` |
 | `review` | `update` | review started | merges findings into current iteration review entry |
 | `review` | `status` | — | reads current iteration review entry |
-| `review` | `approve` | review status set to approved or changes-requested via update | sets status `approved` |
+| `review` | `approve` | review status set to approved or changes-requested via update | sets status `approved`; human-triggered gate |
 | `review` | `redirect <phase>` | — | sets target phase `in-progress`, appends note |
 | `review` | `interrupt` | — | sets status `interrupted` |
-| `finalize` | (no sub-action) | review `approved` | sets finalized, updates workspace-metadata, optionally commits |
+| `finalize` | (no sub-action) | review `approved` | sets finalize status `done` in iteration-log; touches `workspace-metadata.json` `updated_at`; optionally commits |
 | `document` | `check` | — | verifies git repo, returns HEAD hash and metadata state |
 | `document` | `init` | git repo | creates `document-metadata.json` skeleton |
 | `document` | `update-metadata` | metadata exists | writes new commit hash and summary |
@@ -887,14 +881,17 @@ Structured as vertical slices for incremental manual verification.
 
 ### Slice 2 — Workspace Management
 
-- [x] `auggd ws create <slug>` creates workspace dir, `workspace-metadata.json`, empty `iteration-log.json`, empty `files-manifest.json`,
-       empty `attachments/`, empty `tmp/`, and returns workspace `<ID>-slug`
+- [x] `auggd ws create <slug>` creates workspace dir, `workspace-metadata.json` (identity only: id, slug, created_at, updated_at),
+       empty `iteration-log.json`, empty `files-manifest.json`, empty `attachments/`, empty `tmp/`, and returns workspace `<ID>-slug`
 - [x] `auggd ws list` returns all workspaces sorted by workspace ID (uuid7):
        - Columns: Index, Slug, Title, Current Phase, Current Iteration, Interrupted (Y/N)
        - Show the column names
        - Title is derived from `spec.md` frontmatter if present, otherwise empty
+       - Phase, Iteration, and Interrupted are derived from `iteration-log.json` on demand (not from `workspace-metadata.json`)
+       - Phase, Iteration, Interrupted all show as `not started` / `-` / `-` when log is empty
 - [x] `auggd ws info <N>` returns full context prime schema
        - Title is derived from `spec.md` frontmatter if present, otherwise empty
+       - All phase state derived from `iteration-log.json` — `workspace-metadata.json` provides identity only
 - [x] `auggd ws info <N> --last=<N>` respects iteration limit
 - [x] `auggd ws delete <N>` removes workspace dir and all contents
        - Confirmation prompt: `Type 'yes' to confirm deletion of workspace <ID>-slug:`
@@ -903,15 +900,16 @@ Structured as vertical slices for incremental manual verification.
 
 #### Tool Responses
 
-- [ ] All tool actions return valid JSON, exit 0
-- [ ] Error payloads include `error` code, human-readable `message`, and `missing` array where applicable
+- [x] All tool actions return valid JSON, exit 0
+- [x] Error payloads include `error` code, human-readable `message`, and `missing` array where applicable
 
 #### explore
 - [ ] `start` creates `attachments/`, sets explore status `in-progress`
 - [ ] `update` merges data without overwriting unrelated fields
 - [ ] `status` returns current explore entry
+- [ ] `approve` requires objective non-empty and at least one `<topic>.md` in attachments/
 - [ ] `approve` validates `<topic>.md` frontmatter and required sections; returns structured error on failure without advancing state
-- [ ] `approve` sets status `done`, updates `workspace-metadata.json`
+- [ ] `approve` sets status `done`; touches `workspace-metadata.json` `updated_at` only
 - [ ] `redirect <phase>` sets target phase `in-progress`, appends note to target open_questions
 - [ ] `interrupt` sets status `interrupted` without advancing or reversing state
 

@@ -31,154 +31,101 @@ def test_phase_from_string():
 
 
 # ---------------------------------------------------------------------------
-# WorkspaceMetadata
+# WorkspaceMetadata — slim identity-only schema
 # ---------------------------------------------------------------------------
 
 
-def test_workspace_metadata_fields():
+def test_workspace_metadata_slim_fields():
     now = datetime.now(timezone.utc)
     m = WorkspaceMetadata(
         id="AZXyo7HEfomfPS0bTF1uf",
         slug="add-user-auth",
         created_at=now,
         updated_at=now,
-        current_phase=Phase.EXPLORE,
-        current_iteration=0,
-        title="",
-        description="",
-        scope=[],
-        non_goals=[],
     )
     assert m.id == "AZXyo7HEfomfPS0bTF1uf"
     assert m.slug == "add-user-auth"
-    assert m.current_phase is Phase.EXPLORE
-    assert m.current_iteration == 0
+    assert m.created_at == now
+    assert m.updated_at == now
 
 
-def test_workspace_metadata_to_dict_round_trip():
+def test_workspace_metadata_to_dict_slim():
     now = datetime.now(timezone.utc)
     m = WorkspaceMetadata(
         id="testid123",
         slug="my-slug",
         created_at=now,
         updated_at=now,
-        current_phase=Phase.DEVELOP,
-        current_iteration=1,
-        title="My title",
-        description="desc",
-        scope=["a", "b"],
-        non_goals=["c"],
     )
     d = m.to_dict()
     assert d["id"] == "testid123"
     assert d["slug"] == "my-slug"
-    assert d["current_phase"] == "develop"
-    assert d["current_iteration"] == 1
-    assert d["title"] == "My title"
-    assert d["scope"] == ["a", "b"]
-    assert d["non_goals"] == ["c"]
+    assert "created_at" in d
+    assert "updated_at" in d
+    # Removed fields must not be present
+    assert "current_phase" not in d
+    assert "current_iteration" not in d
+    assert "title" not in d
+    assert "description" not in d
+    assert "scope" not in d
+    assert "non_goals" not in d
 
 
-def test_workspace_metadata_from_dict_round_trip():
+def test_workspace_metadata_to_dict_has_exactly_four_keys():
     now = datetime.now(timezone.utc)
-    m = WorkspaceMetadata(
-        id="testid123",
-        slug="my-slug",
-        created_at=now,
-        updated_at=now,
-        current_phase=Phase.PLAN,
-        current_iteration=2,
-        title="T",
-        description="D",
-        scope=[],
-        non_goals=[],
-    )
+    m = WorkspaceMetadata(id="x", slug="s", created_at=now, updated_at=now)
+    assert set(m.to_dict().keys()) == {"id", "slug", "created_at", "updated_at"}
+
+
+def test_workspace_metadata_from_dict_slim():
+    now = datetime.now(timezone.utc)
+    m = WorkspaceMetadata(id="testid123", slug="my-slug", created_at=now, updated_at=now)
     restored = WorkspaceMetadata.from_dict(m.to_dict())
     assert restored.id == m.id
     assert restored.slug == m.slug
-    assert restored.current_phase is Phase.PLAN
-    assert restored.current_iteration == 2
 
 
 def test_workspace_metadata_timestamps_are_iso_strings_in_dict():
     now = datetime.now(timezone.utc)
-    m = WorkspaceMetadata(
-        id="x",
-        slug="s",
-        created_at=now,
-        updated_at=now,
-        current_phase=Phase.EXPLORE,
-        current_iteration=0,
-        title="",
-        description="",
-        scope=[],
-        non_goals=[],
-    )
+    m = WorkspaceMetadata(id="x", slug="s", created_at=now, updated_at=now)
     d = m.to_dict()
     assert isinstance(d["created_at"], str)
     assert "T" in d["created_at"]  # ISO 8601 format
 
 
 # ---------------------------------------------------------------------------
-# WorkspaceListItem
+# WorkspaceListItem — log-derived fields
 # ---------------------------------------------------------------------------
 
 
-def test_workspace_list_item_fields():
+def test_workspace_list_item_not_started():
     now = datetime.now(timezone.utc)
-    meta = WorkspaceMetadata(
-        id="x",
-        slug="my-ws",
-        created_at=now,
-        updated_at=now,
-        current_phase=Phase.DEVELOP,
-        current_iteration=1,
-        title="",
-        description="",
-        scope=[],
-        non_goals=[],
+    meta = WorkspaceMetadata(id="x", slug="my-ws", created_at=now, updated_at=now)
+    item = WorkspaceListItem(metadata=meta, title="", phase=None, iteration=None, interrupted=None)
+    assert item.phase is None
+    assert item.iteration is None
+    assert item.interrupted is None
+
+
+def test_workspace_list_item_in_progress():
+    now = datetime.now(timezone.utc)
+    meta = WorkspaceMetadata(id="x", slug="my-ws", created_at=now, updated_at=now)
+    item = WorkspaceListItem(
+        metadata=meta, title="My Feature", phase="explore", iteration=0, interrupted=False
     )
-    item = WorkspaceListItem(metadata=meta, title="My Feature", interrupted=False, started=True)
-    assert item.metadata is meta
-    assert item.title == "My Feature"
+    assert item.phase == "explore"
+    assert item.iteration == 0
     assert item.interrupted is False
-    assert item.started is True
+    assert item.title == "My Feature"
 
 
-def test_workspace_list_item_interrupted_true():
+def test_workspace_list_item_interrupted():
     now = datetime.now(timezone.utc)
-    meta = WorkspaceMetadata(
-        id="x",
-        slug="my-ws",
-        created_at=now,
-        updated_at=now,
-        current_phase=Phase.DEVELOP,
-        current_iteration=1,
-        title="",
-        description="",
-        scope=[],
-        non_goals=[],
+    meta = WorkspaceMetadata(id="x", slug="my-ws", created_at=now, updated_at=now)
+    item = WorkspaceListItem(
+        metadata=meta, title="", phase="develop", iteration=1, interrupted=True
     )
-    item = WorkspaceListItem(metadata=meta, title="", interrupted=True, started=True)
     assert item.interrupted is True
-
-
-def test_workspace_list_item_started_false():
-    now = datetime.now(timezone.utc)
-    meta = WorkspaceMetadata(
-        id="x",
-        slug="my-ws",
-        created_at=now,
-        updated_at=now,
-        current_phase=Phase.EXPLORE,
-        current_iteration=0,
-        title="",
-        description="",
-        scope=[],
-        non_goals=[],
-    )
-    item = WorkspaceListItem(metadata=meta, title="", interrupted=False, started=False)
-    assert item.started is False
 
 
 # ---------------------------------------------------------------------------

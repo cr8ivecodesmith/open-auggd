@@ -14,7 +14,6 @@ from typing import Any
 from uuid_extensions import uuid7  # type: ignore[import-untyped]
 
 from open_auggd.workspace.models import (
-    Phase,
     WorkspaceListItem,
     WorkspaceMetadata,
     WsInfoIteration,
@@ -73,15 +72,50 @@ def _read_spec_title(ws_path: Path) -> str:
     return ""
 
 
-def _is_interrupted(iteration_log: dict[str, Any], current_iteration: int) -> bool:
-    """Return True if any phase in the current iteration has status 'interrupted'."""
-    current_str = str(current_iteration)
-    if current_str not in iteration_log:
-        return False
-    for phase_data in iteration_log[current_str].values():
-        if isinstance(phase_data, dict) and phase_data.get("status") == "interrupted":
-            return True
-    return False
+def _derive_current_state(
+    iter_log: dict[str, Any],
+) -> tuple[str | None, int | None, bool | None]:
+    """Derive current phase, iteration, and interrupted state from the iteration log.
+
+    All three values are ``None`` when the log is empty (workspace not yet started).
+
+    The current iteration is the highest integer key in the log. The current phase
+    is the last phase entry in that iteration whose status is not ``"done"``; if all
+    phases are done, the last phase key is used. Interrupted reflects whether the
+    current phase's status is ``"interrupted"``.
+
+    Args:
+        iter_log: The parsed ``iteration-log.json`` dict.
+
+    Returns:
+        Tuple of ``(phase, iteration, interrupted)``, all ``None`` when log is empty.
+    """
+    if not iter_log:
+        return None, None, None
+
+    iteration = max(int(k) for k in iter_log.keys())
+    current_entry: dict[str, Any] = iter_log[str(iteration)]
+
+    # Find the current phase: last phase whose status is not "done".
+    phase: str | None = None
+    for p, data in current_entry.items():
+        if isinstance(data, dict):
+            if data.get("status") != "done":
+                phase = p
+            else:
+                phase = p  # track last seen even if done
+    # If every phase was done, phase is the last key — that's correct.
+    # If no phases at all, phase stays None.
+
+    if phase is None:
+        return None, iteration, None
+
+    phase_status = (
+        current_entry[phase].get("status") if isinstance(current_entry.get(phase), dict) else None
+    )
+    interrupted = phase_status == "interrupted"
+
+    return phase, iteration, interrupted
 
 
 class WorkspaceManager:
@@ -103,8 +137,9 @@ class WorkspaceManager:
         """Create a new workspace.
 
         Generates a UUID7 ID, normalises the slug, creates the workspace
-        directory structure, and writes the three JSON artifact files plus
-        ``attachments/`` and ``tmp/`` subdirectories.
+        directory structure, and writes ``workspace-metadata.json`` (identity
+        only), ``iteration-log.json``, ``files-manifest.json``, ``attachments/``
+        and ``tmp/`` subdirectories.
 
         Args:
             slug_input: User-provided slug (will be normalised).
@@ -127,12 +162,6 @@ class WorkspaceManager:
             slug=slug,
             created_at=now,
             updated_at=now,
-            current_phase=Phase.EXPLORE,
-            current_iteration=0,
-            title="",
-            description="",
-            scope=[],
-            non_goals=[],
         )
         (ws_dir / "workspace-metadata.json").write_text(
             json.dumps(metadata.to_dict(), indent=2) + "\n"
@@ -149,7 +178,8 @@ class WorkspaceManager:
         is equivalent to chronological creation order.
 
         Each item is enriched with the title from ``spec.md`` frontmatter
-        (if present) and the interrupted flag for the current iteration.
+        (if present) and phase/iteration/interrupted derived from the
+        iteration log on demand.
 
         Returns:
             List of ``WorkspaceListItem`` objects.
@@ -172,8 +202,8 @@ class WorkspaceManager:
             iter_log_path = ws_dir / "iteration-log.json"
             if iter_log_path.exists():
                 iter_log = json.loads(iter_log_path.read_text())
-            started = bool(iter_log)
-            interrupted = _is_interrupted(iter_log, metadata.current_iteration)
+
+            phase, iteration, interrupted = _derive_current_state(iter_log)
 
             items.append(
                 (
@@ -181,8 +211,9 @@ class WorkspaceManager:
                     WorkspaceListItem(
                         metadata=metadata,
                         title=title,
+                        phase=phase,
+                        iteration=iteration,
                         interrupted=interrupted,
-                        started=started,
                     ),
                 )
             )
@@ -288,7 +319,7 @@ class WorkspaceManager:
                 )
             )
 
-        # Title from spec.md frontmatter (overrides empty metadata title).
+        # Title from spec.md frontmatter.
         title = _read_spec_title(ws_path)
 
         # spec.md path.

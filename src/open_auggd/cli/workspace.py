@@ -77,14 +77,14 @@ def list_workspaces() -> None:
 
     for i, item in enumerate(items, start=1):
         meta = item.metadata
-        if item.started:
-            phase = meta.current_phase.value
-            iteration = str(meta.current_iteration)
-            interrupted = "Y" if item.interrupted else "N"
-        else:
+        if item.iteration is None:
             phase = "not started"
             iteration = "-"
             interrupted = "-"
+        else:
+            phase = item.phase or ""
+            iteration = str(item.iteration)
+            interrupted = "Y" if item.interrupted else "N"
         click.echo(
             f"{i:<3}  "
             f"{meta.slug:<{slug_w}}  "
