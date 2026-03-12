@@ -271,10 +271,10 @@ returns a structured error payload listing what is missing — state is not part
 appends the note to that phase's `open_questions` in `iteration-log.json`, giving the
 receiving agent explicit context for why it was re-entered.
 
-    `start` vs **re-entry via** `redirect`
-    `start` is required only for first entry into a phase. When a phase is re-entered via `redirect`,
-    it is already set to `in-progress` by the redirect action — calling `start` again is not required
-    and will return an error if the phase entry already exists.
+`start` vs **re-entry via** `redirect`
+`start` is required only for first entry into a phase. When a phase is re-entered via `redirect`,
+it is already set to `in-progress` by the redirect action — calling `start` again is not required
+and will return an error if the phase entry already exists.
 
 `interrupt` is always human-triggered. It sets the current phase status to `interrupted`
 without advancing or reversing state.
@@ -315,9 +315,6 @@ a blank-slate agent fully without requiring it to read multiple files.
   "id": "AZXyo7HEfomfPS0bTF1uf",
   "slug": "add-user-authentication",
   "title": "",
-  "current_phase": "develop",
-  "current_iteration": 1,
-  "phase_status": "in-progress",
   "last_n_iterations": [
     {
       "n": 1,
@@ -337,14 +334,14 @@ a blank-slate agent fully without requiring it to read multiple files.
   "spec_path": "<WS>/spec.md",
   "attachments": ["<WS>/attachments/topic.md"],
   "workspace_path": "<WS>",
-  "interrupted": false,
-  "redirect_note": null
 }
 ```
 
-`last_n_iterations` returns the last 3 iterations by default. Configurable via
-`--last=<N>` flag. Earlier iterations are omitted to manage context window budget.
-Agents prioritize the most recent iterations; older entries provide summary context only.
+- `last_n_iterations` returns the last 3 iterations by default. Configurable via
+  `--last=<N>` flag. Earlier iterations are omitted to manage context window budget.
+- Agents prioritize the most recent iteration; older entries provide summary context only.
+- `attachements` shows all files created in the explore phase across all iterations.
+- `title` is derived from the `spec.md` frontmatter `title` field.
 
 ---
 
@@ -890,12 +887,17 @@ Structured as vertical slices for incremental manual verification.
 
 ### Slice 2 — Workspace Management
 
-- [ ] `auggd ws create <slug>` creates workspace dir, `workspace-metadata.json`, empty `iteration-log.json`, empty `files-manifest.json`,
+- [x] `auggd ws create <slug>` creates workspace dir, `workspace-metadata.json`, empty `iteration-log.json`, empty `files-manifest.json`,
        empty `attachments/`, empty `tmp/`, and returns workspace `<ID>-slug`
-- [ ] `auggd ws list` returns all workspaces sorted by creation time
-- [ ] `auggd ws info <N>` returns full context prime schema
-- [ ] `auggd ws info <N> --last=<N>` respects iteration limit
-- [ ] `auggd ws delete <N>` removes workspace dir
+- [x] `auggd ws list` returns all workspaces sorted by workspace ID (uuid7):
+       - Columns: Index, Slug, Title, Current Phase, Current Iteration, Interrupted (Y/N)
+       - Show the column names
+       - Title is derived from `spec.md` frontmatter if present, otherwise empty
+- [x] `auggd ws info <N>` returns full context prime schema
+       - Title is derived from `spec.md` frontmatter if present, otherwise empty
+- [x] `auggd ws info <N> --last=<N>` respects iteration limit
+- [x] `auggd ws delete <N>` removes workspace dir and all contents
+       - Confirmation prompt: `Type 'yes' to confirm deletion of workspace <ID>-slug:`
 
 ### Slice 3 — Phase Tools and Gate Mechanics
 
